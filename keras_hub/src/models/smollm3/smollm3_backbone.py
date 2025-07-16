@@ -61,7 +61,6 @@ class SmolLM3Backbone(Backbone):
         rope_layer_enabled_list,
         layer_types,
         mlp_bias,
-        rms_norm_epsilon,
         layer_norm_epsilon,
         max_position_embeddings,
         rope_theta,
@@ -89,7 +88,7 @@ class SmolLM3Backbone(Backbone):
                 layer_idx=i,
                 intermediate_size=intermediate_dim,
                 mlp_bias=mlp_bias,
-                rms_norm_epsilon=rms_norm_epsilon,
+                rms_norm_epsilon=layer_norm_epsilon,
             )
             self.decoder_layers.append(layer)
 
@@ -145,9 +144,6 @@ class SmolLM3Backbone(Backbone):
             {
                 "vocabulary_size": self.vocabulary_size,
                 "num_layers": self.num_layers,
-                "num_query_heads": self.num_query_heads,
-                "hidden_dim": self.hidden_dim,
-                "intermediate_dim": self.intermediate_dim,
             }
         )
         return config

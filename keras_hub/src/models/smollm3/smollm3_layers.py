@@ -68,8 +68,6 @@ class SmolLM3Attention(layers.Layer):
             else True
         )  # Default to True if index out of bounds
 
-        self._attention_interface = eager_attention_forward
-
     def call(
         self,
         hidden_states,
@@ -113,7 +111,7 @@ class SmolLM3Attention(layers.Layer):
                 query_states, key_states, cos, sin
             )
 
-        attn_output, attn_weights = self._attention_interface(
+        attn_output, attn_weights = eager_attention_forward(
             module=self,
             query=query_states,
             key=key_states,

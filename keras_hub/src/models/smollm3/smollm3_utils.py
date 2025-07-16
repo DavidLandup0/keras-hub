@@ -34,8 +34,9 @@ def eager_attention_forward(
     key,
     value,
     attention_mask,
-    scaling: float,
-    dropout: float = 0.0,
+    scaling,
+    dropout=0.0,
+    training=False,
 ):
     key_states = repeat_kv(key, module.num_key_value_groups)
     value_states = repeat_kv(value, module.num_key_value_groups)
@@ -51,7 +52,8 @@ def eager_attention_forward(
         attn_weights = ops.add(attn_weights, causal_mask)
 
     attn_weights = ops.softmax(attn_weights, axis=-1)
-    attn_weights = random.dropout(attn_weights, rate=dropout)
+    if not training:
+        attn_weights = random.dropout(attn_weights, rate=dropout)
     attn_output = ops.matmul(attn_weights, value_states)
     attn_output = ops.transpose(attn_output, axes=(0, 2, 1, 3))
 
