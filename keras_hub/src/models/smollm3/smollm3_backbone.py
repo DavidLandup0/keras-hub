@@ -1,6 +1,9 @@
 import keras
 
 from keras_hub.src.api_export import keras_hub_export
+from keras_hub.src.layers.modeling.reversible_embedding import (
+    ReversibleEmbedding,
+)
 from keras_hub.src.models.backbone import Backbone
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3DecoderLayer
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3RotaryEmbedding
@@ -68,12 +71,12 @@ class SmolLM3Backbone(Backbone):
         **kwargs,
     ):
         # === Layers ===
-        self.token_embedding = keras.layers.Embedding(
+        self.token_embedding = ReversibleEmbedding(
             input_dim=vocabulary_size,
             output_dim=hidden_dim,
             name="token_embedding",
         )
-        self.decoder_layers = []
+        self.transformer_layers = []
 
         for i in range(num_layers):
             layer = SmolLM3DecoderLayer(
@@ -87,10 +90,10 @@ class SmolLM3Backbone(Backbone):
                 layer_idx=i,
                 intermediate_size=intermediate_dim,
                 mlp_bias=mlp_bias,
-                rms_norm_epsilon=layer_norm_epsilon,
+                layer_norm_epsilon=layer_norm_epsilon,
                 name=f"transformer_layer_{i}",
             )
-            self.decoder_layers.append(layer)
+            self.transformer_layers.append(layer)
 
         self.norm = keras.layers.RMSNormalization(
             epsilon=layer_norm_epsilon,
@@ -112,16 +115,20 @@ class SmolLM3Backbone(Backbone):
         position_id_input = keras.Input(
             shape=(None,), dtype="int32", name="position_ids"
         )
+        padding_mask_input = keras.Input(
+            shape=(None,), dtype="int32", name="padding_mask"
+        )
 
         hidden_states = self.token_embedding(token_id_input)
         position_embeddings = self.rotary_embedding(
             hidden_states, position_id_input
         )
 
-        for decoder_layer in self.decoder_layers[:num_layers]:
+        for decoder_layer in self.transformer_layers[:num_layers]:
             hidden_states = decoder_layer(
                 hidden_states,
                 position_embeddings=position_embeddings,
+                decoder_padding_mask=padding_mask_input,
                 **kwargs,
             )
 
@@ -130,6 +137,7 @@ class SmolLM3Backbone(Backbone):
             inputs={
                 "token_ids": token_id_input,
                 "position_ids": position_id_input,
+                "padding_mask": padding_mask_input,
             },
             outputs=sequence_output,
             **kwargs,
@@ -137,14 +145,40 @@ class SmolLM3Backbone(Backbone):
 
         # === Config ===
         self.vocabulary_size = vocabulary_size
+        self.hidden_dim = hidden_dim
+        self.intermediate_dim = intermediate_dim
         self.num_layers = num_layers
+        self.num_attention_heads = num_attention_heads
+        self.num_key_value_heads = num_key_value_heads
+        self.attention_bias = attention_bias
+        self.attention_dropout = attention_dropout
+        self.rope_layer_enabled_list = rope_layer_enabled_list
+        self.layer_types = layer_types
+        self.mlp_bias = mlp_bias
+        self.layer_norm_epsilon = layer_norm_epsilon
+        self.max_position_embeddings = max_position_embeddings
+        self.rope_theta = rope_theta
+        self.partial_rotary_factor = partial_rotary_factor
 
     def get_config(self):
         config = super().get_config()
         config.update(
             {
                 "vocabulary_size": self.vocabulary_size,
+                "hidden_dim": self.hidden_dim,
+                "intermediate_dim": self.intermediate_dim,
                 "num_layers": self.num_layers,
+                "num_attention_heads": self.num_attention_heads,
+                "num_key_value_heads": self.num_key_value_heads,
+                "attention_bias": self.attention_bias,
+                "attention_dropout": self.attention_dropout,
+                "rope_layer_enabled_list": self.rope_layer_enabled_list,
+                "layer_types": self.layer_types,
+                "mlp_bias": self.mlp_bias,
+                "layer_norm_epsilon": self.layer_norm_epsilon,
+                "max_position_embeddings": self.max_position_embeddings,
+                "rope_theta": self.rope_theta,
+                "partial_rotary_factor": self.partial_rotary_factor,
             }
         )
         return config

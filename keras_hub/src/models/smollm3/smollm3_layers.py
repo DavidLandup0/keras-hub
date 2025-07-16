@@ -6,6 +6,9 @@ from keras import ops
 from keras_hub.src.layers.modeling.transformer_layer_utils import (
     compute_causal_mask,
 )
+from keras_hub.src.layers.modeling.transformer_layer_utils import (
+    merge_padding_and_attention_mask,
+)
 from keras_hub.src.models.smollm3.smollm3_utils import apply_rotary_pos_emb
 from keras_hub.src.models.smollm3.smollm3_utils import eager_attention_forward
 from keras_hub.src.models.smollm3.smollm3_utils import rope_init
@@ -103,8 +106,8 @@ class SmolLM3Attention(layers.Layer):
         self,
         hidden_states,
         position_embeddings,
-        attention_mask,
         training=False,
+        attention_mask=None,
         **kwargs,
     ):
         """
@@ -117,34 +120,62 @@ class SmolLM3Attention(layers.Layer):
             training: Whether the layer is in training mode.
         """
         self.training = training
-
-        input_shape = ops.shape(hidden_states)[
-            :-1
-        ]  # Exclude last dim (hidden_size)
-
-        query_states = ops.reshape(
-            self.q_proj(hidden_states),
-            (*input_shape, self.num_attention_heads, self.head_dim),
+        self_attention_cache = kwargs.get("self_attention_cache", None)
+        self_attention_cache_update_index = kwargs.get(
+            "self_attention_cache_update_index", None
         )
-        query_states = ops.transpose(
-            query_states, axes=(0, 2, 1, 3)
-        )  # (batch, num_heads, seq_len, head_dim)
 
-        # For key and value, the kv_hidden_shape should be based on num_key_value_heads
-        kv_hidden_shape = (
-            *input_shape,
-            self.num_key_value_heads,
-            self.head_dim,
-        )
-        key_states = ops.reshape(self.k_proj(hidden_states), kv_hidden_shape)
-        key_states = ops.transpose(
-            key_states, axes=(0, 2, 1, 3)
-        )  # (batch, num_key_value_heads, seq_len, head_dim)
+        input_shape = ops.shape(hidden_states)[:-1]
+        hidden_shape = (*input_shape, self.num_attention_heads, self.head_dim)
 
-        value_states = ops.reshape(self.v_proj(hidden_states), kv_hidden_shape)
-        value_states = ops.transpose(
-            value_states, axes=(0, 2, 1, 3)
-        )  # (batch, num_key_value_heads, seq_len, head_dim)
+        query_states = ops.reshape(self.q_proj(hidden_states), hidden_shape)
+        # (batch, num_heads, seq_len, head_dim)
+        query_states = ops.transpose(query_states, axes=(0, 2, 1, 3))
+
+        def _compute_kv_values(x_input):
+            kv_hidden_shape = (
+                *input_shape,
+                self.num_key_value_heads,
+                self.head_dim,
+            )
+
+            key_states_raw = ops.reshape(self.k_proj(x_input), kv_hidden_shape)
+            value_states_raw = ops.reshape(
+                self.v_proj(x_input), kv_hidden_shape
+            )
+
+            key_states = ops.transpose(key_states_raw, axes=(0, 2, 1, 3))
+            value_states = ops.transpose(value_states_raw, axes=(0, 2, 1, 3))
+            return key_states, value_states
+
+        if self_attention_cache is not None:
+            key_cache = self_attention_cache[:, 0, ...]
+            value_cache = self_attention_cache[:, 1, ...]
+
+            if self_attention_cache_update_index is None:
+                key_states = key_cache
+                value_states = value_cache
+            else:
+                key_update, value_update = _compute_kv_values(hidden_states)
+                update_idx_tensor = ops.convert_to_tensor(
+                    self_attention_cache_update_index, dtype="int32"
+                )
+                start = [0, 0, update_idx_tensor, 0]
+                key_states = ops.slice_update(key_cache, start, key_update)
+                value_states = ops.slice_update(
+                    value_cache, start, value_update
+                )
+                self_attention_cache = ops.stack(
+                    (key_states, value_states), axis=1
+                )
+        else:
+            if self_attention_cache_update_index is not None:
+                raise ValueError(
+                    "`self_attention_cache_update_index` should not be set if `self_attention_cache` is "
+                    f"`None`. Received: self_attention_cache={self_attention_cache}, "
+                    f"self_attention_cache_update_index={self_attention_cache_update_index}"
+                )
+            key_states, value_states = _compute_kv_values(hidden_states)
 
         if self.use_rope:
             cos, sin = position_embeddings
@@ -152,23 +183,25 @@ class SmolLM3Attention(layers.Layer):
                 query_states, key_states, cos, sin
             )
 
-        attn_output, attn_weights = eager_attention_forward(
+        attn_output = eager_attention_forward(
             module=self,
             query=query_states,
             key=key_states,
             value=value_states,
-            attention_mask=attention_mask,
             dropout=self.attention_dropout,
             scaling=self.scaling,
             training=self.training,
-            **kwargs,
+            attention_mask=attention_mask,
         )
 
         attn_output = ops.reshape(attn_output, (*input_shape, self.hidden_size))
 
         attn_output = self.o_proj(attn_output)
 
-        return attn_output, attn_weights
+        if self_attention_cache is not None:
+            return attn_output, self_attention_cache
+
+        return attn_output
 
     def compute_output_shape(self, input_shape):
         """
@@ -290,7 +323,7 @@ class SmolLM3DecoderLayer(layers.Layer):
         layer_idx: Index of the current layer.
         intermediate_size: The intermediate size of the MLP.
         mlp_bias: Whether to use bias in MLP dense layers.
-        rms_norm_epsilon: Epsilon for RMSNormalization.
+        layer_norm_epsilon: Epsilon for RMSNormalization.
     """
 
     def __init__(
@@ -305,7 +338,7 @@ class SmolLM3DecoderLayer(layers.Layer):
         layer_idx: int,
         intermediate_size: int,
         mlp_bias: bool,
-        rms_norm_epsilon: float,
+        layer_norm_epsilon: float,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -332,13 +365,48 @@ class SmolLM3DecoderLayer(layers.Layer):
         )
 
         self.input_layernorm = layers.RMSNormalization(
-            epsilon=rms_norm_epsilon, axis=-1, name="input_layernorm"
+            epsilon=layer_norm_epsilon, axis=-1, name="input_layernorm"
         )
         self.post_attention_layernorm = layers.RMSNormalization(
-            epsilon=rms_norm_epsilon, axis=-1, name="post_attention_layernorm"
+            epsilon=layer_norm_epsilon, axis=-1, name="post_attention_layernorm"
         )
 
         self.attention_type = layer_types[layer_idx]
+
+    def _compute_self_attention_mask(
+        self,
+        decoder_sequence,
+        decoder_padding_mask,
+        decoder_attention_mask,
+        self_attention_cache,
+        self_attention_cache_update_index,
+    ):
+        decoder_mask = merge_padding_and_attention_mask(
+            decoder_sequence, decoder_padding_mask, decoder_attention_mask
+        )
+        batch_size = ops.shape(decoder_sequence)[0]
+        input_length = output_length = ops.shape(decoder_sequence)[1]
+        # We need to handle a rectangular causal mask when doing cached
+        # decoding. For generative inference, `decoder_sequence` will
+        # generally be length 1, and `cache` will be the full generation length.
+        if self_attention_cache is not None:
+            input_length = ops.shape(self_attention_cache)[2]
+
+        cache_update_index = (
+            0
+            if self_attention_cache_update_index is None
+            else self_attention_cache_update_index
+        )
+
+        causal_mask = compute_causal_mask(
+            batch_size, input_length, output_length, cache_update_index
+        )
+
+        return (
+            ops.minimum(decoder_mask, causal_mask)
+            if decoder_mask is not None
+            else causal_mask
+        )
 
     def build(self, input_shape):
         """
@@ -375,6 +443,8 @@ class SmolLM3DecoderLayer(layers.Layer):
         hidden_states,
         position_embeddings=None,
         training=False,
+        decoder_padding_mask=None,
+        decoder_attention_mask=None,
         **kwargs,
     ):
         """
@@ -385,23 +455,36 @@ class SmolLM3DecoderLayer(layers.Layer):
             position_embeddings: Optional tuple of (cos, sin) tensors for RoPE.
             training: Whether the layer is in training mode.
         """
+        self_attention_cache = kwargs.get("self_attention_cache", None)
+        self_attention_cache_update_index = kwargs.get(
+            "self_attention_cache_update_index", None
+        )
+
+        self_attention_mask = self._compute_self_attention_mask(
+            decoder_sequence=hidden_states,
+            decoder_padding_mask=decoder_padding_mask,
+            decoder_attention_mask=decoder_attention_mask,
+            self_attention_cache=self_attention_cache,
+            self_attention_cache_update_index=self_attention_cache_update_index,
+        )
+
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
 
-        attention_mask = compute_causal_mask(
-            ops.shape(hidden_states)[0],
-            ops.shape(hidden_states)[1],
-            ops.shape(hidden_states)[1],
-        )
-
         # Self Attention
-        attn_output, _ = self.self_attn(
+        x = self.self_attn(
             hidden_states=hidden_states,
-            attention_mask=attention_mask,
             position_embeddings=position_embeddings,
             training=training,
+            attention_mask=self_attention_mask,
             **kwargs,
         )
+
+        if isinstance(x, tuple):
+            attn_output, self_attention_cache = x
+        else:
+            attn_output = x
+
         hidden_states = ops.add(residual, attn_output)
 
         residual = hidden_states
@@ -409,7 +492,10 @@ class SmolLM3DecoderLayer(layers.Layer):
         hidden_states = self.mlp(hidden_states)
         hidden_states = ops.add(residual, hidden_states)
 
-        return hidden_states
+        if self_attention_cache is not None:
+            return hidden_states, self_attention_cache
+        else:
+            return hidden_states
 
     def compute_output_shape(self, input_shape):
         """

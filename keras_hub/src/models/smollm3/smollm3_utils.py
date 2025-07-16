@@ -3,8 +3,8 @@ from keras import random
 
 
 def rotate_half(x):
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2 :]
+    x1 = x[..., : ops.shape(x)[-1] // 2]
+    x2 = x[..., ops.shape(x)[-1] // 2 :]
     return ops.concatenate((-x2, x1), axis=-1)
 
 
@@ -33,8 +33,8 @@ def eager_attention_forward(
     query,
     key,
     value,
-    attention_mask,
     scaling,
+    attention_mask=None,
     dropout=0.0,
     training=False,
 ):
@@ -46,17 +46,18 @@ def eager_attention_forward(
         * scaling
     )
 
-    # Apply attention mask if provided
     if attention_mask is not None:
-        attn_weights = ops.add(attn_weights, attention_mask)
+        causal_mask = attention_mask[:, :, :, : ops.shape(key_states)[-2]]
+        attn_weights = ops.add(attn_weights, causal_mask)
 
     attn_weights = ops.softmax(attn_weights, axis=-1)
-    if not training:
+
+    if training:
         attn_weights = random.dropout(attn_weights, rate=dropout)
     attn_output = ops.matmul(attn_weights, value_states)
     attn_output = ops.transpose(attn_output, axes=(0, 2, 1, 3))
 
-    return attn_output, attn_weights
+    return attn_output
 
 
 def rope_init(rope_theta: float, partial_rotary_factor: float, head_dim: int):

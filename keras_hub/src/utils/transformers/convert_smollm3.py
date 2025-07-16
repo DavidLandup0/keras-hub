@@ -52,7 +52,6 @@ def convert_weights(backbone, loader, transformers_config):
         )
 
         # Attention layers
-
         ## Query
         loader.port_weight(
             keras_variable=decoder_layer.self_attn.q_proj.kernel,
@@ -75,8 +74,6 @@ def convert_weights(backbone, loader, transformers_config):
         loader.port_weight(
             keras_variable=decoder_layer.self_attn.o_proj.kernel,
             hf_weight_key=f"model.layers.{i}.self_attn.o_proj.weight",
-            # rearrange_patterns="c (a b) -> a b c",
-            # rearrange_dims={"a": backbone.num_query_heads},
             hook_fn=transpose_and_reshape,
         )
 
@@ -111,6 +108,8 @@ def convert_weights(backbone, loader, transformers_config):
         keras_variable=backbone.get_layer("sequence_output_layernorm").scale,
         hf_weight_key="model.norm.weight",
     )
+
+    backbone.training = False
 
     return backbone
 
