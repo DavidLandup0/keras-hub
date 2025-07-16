@@ -3,6 +3,9 @@ from keras import initializers
 from keras import layers
 from keras import ops
 
+from keras_hub.src.layers.modeling.transformer_layer_utils import (
+    compute_causal_mask,
+)
 from keras_hub.src.models.smollm3.smollm3_utils import apply_rotary_pos_emb
 from keras_hub.src.models.smollm3.smollm3_utils import eager_attention_forward
 from keras_hub.src.models.smollm3.smollm3_utils import rope_init
@@ -216,13 +219,20 @@ class SmolLM3DecoderLayer(layers.Layer):
     def call(
         self,
         hidden_states,
-        attention_mask=None,
         position_embeddings=None,
         training=False,
         **kwargs,
     ):
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
+
+        attention_mask = (
+            compute_causal_mask(
+                ops.shape(hidden_states)[0],
+                ops.shape(hidden_states)[1],
+                ops.shape(hidden_states)[1],
+            ),
+        )
 
         # Self Attention
         attn_output, _ = self.self_attn(

@@ -1,9 +1,6 @@
 import keras
 
 from keras_hub.src.api_export import keras_hub_export
-from keras_hub.src.layers.modeling.transformer_layer_utils import (
-    compute_causal_mask,
-)
 from keras_hub.src.models.backbone import Backbone
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3DecoderLayer
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3RotaryEmbedding
@@ -78,7 +75,7 @@ class SmolLM3Backbone(Backbone):
             output_dim=hidden_dim,
             name="token_embedding",
         )
-        self.transformer_layers = []
+        self.decoder_layers = []
 
         for i in range(num_layers):
             layer = SmolLM3DecoderLayer(
@@ -94,7 +91,7 @@ class SmolLM3Backbone(Backbone):
                 mlp_bias=mlp_bias,
                 rms_norm_epsilon=rms_norm_epsilon,
             )
-            self.transformer_layers.append(layer)
+            self.decoder_layers.append(layer)
 
         self.norm = keras.layers.RMSNormalization(
             epsilon=layer_norm_epsilon,
@@ -117,22 +114,19 @@ class SmolLM3Backbone(Backbone):
             shape=(None,), dtype="int32", name="position_ids"
         )
 
+        print("token id", token_id_input.shape)
         hidden_states = self.token_embedding(token_id_input)
+        print("hidden states id", hidden_states.shape)
         position_embeddings = self.rotary_embedding(hidden_states, position_ids)
 
-        for decoder_layer in self.layers[:num_hidden_layers]:
+        for decoder_layer in self.decoder_layers[:num_hidden_layers]:
             hidden_states = decoder_layer(
                 hidden_states,
-                attention_mask=compute_causal_mask(
-                    hidden_states.shape[0],
-                    hidden_states.shape[1],
-                    hidden_states.shape[1],
-                ),
                 position_embeddings=position_embeddings,
                 **kwargs,
             )
 
-        sequence_output = self.layer_norm(x)
+        sequence_output = self.layer_norm(hidden_states)
         super().__init__(
             inputs={
                 "token_ids": token_id_input,
