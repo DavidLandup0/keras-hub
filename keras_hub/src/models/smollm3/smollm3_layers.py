@@ -12,6 +12,20 @@ from keras_hub.src.models.smollm3.smollm3_utils import rope_init
 
 
 class SmolLM3Attention(layers.Layer):
+    """
+    Multi-head attention layer for SmolLM3 model.
+
+    Args:
+        hidden_size: The hidden size of the attention layer.
+        num_attention_heads: The number of attention heads.
+        num_key_value_heads: The number of key-value heads.
+        attention_bias: Whether to use bias in attention projections.
+        attention_dropout: Dropout rate for attention weights.
+        rope_layer_enabled_list: List indicating if RoPE is enabled for each layer.
+        layer_types: List of layer types.
+        layer_idx: Index of the current layer.
+    """
+
     def __init__(
         self,
         hidden_size: int,
@@ -76,15 +90,25 @@ class SmolLM3Attention(layers.Layer):
         training=False,
         **kwargs,
     ):
+        """
+        Forward pass for SmolLM3Attention.
+
+        Args:
+            hidden_states: Input tensor of shape (batch_size, seq_len, hidden_size).
+            position_embeddings: Tuple of (cos, sin) tensors for RoPE.
+            attention_mask: Attention mask tensor.
+            training: Whether the layer is in training mode.
+        """
         self.training = training
 
         input_shape = ops.shape(hidden_states)[
             :-1
         ]  # Exclude last dim (hidden_size)
 
-        hidden_shape = (*input_shape, self.num_attention_heads, self.head_dim)
-
-        query_states = ops.reshape(self.q_proj(hidden_states), hidden_shape)
+        query_states = ops.reshape(
+            self.q_proj(hidden_states),
+            (*input_shape, self.num_attention_heads, self.head_dim),
+        )
         query_states = ops.transpose(
             query_states, axes=(0, 2, 1, 3)
         )  # (batch, num_heads, seq_len, head_dim)
@@ -129,8 +153,47 @@ class SmolLM3Attention(layers.Layer):
 
         return attn_output, attn_weights
 
+    def compute_output_shape(self, input_shape):
+        """
+        Computes the output shape of the layer.
+
+        Args:
+            input_shape: A list/tuple of shapes for the inputs:
+                         [hidden_states_shape, position_embeddings_shape_tuple, attention_mask_shape]
+                         - hidden_states_shape: (batch_size, seq_len, hidden_size)
+                         - position_embeddings_shape_tuple: (cos_shape, sin_shape) where cos_shape/sin_shape is (batch_size, seq_len, head_dim)
+                         - attention_mask_shape: (batch_size, 1, seq_len, seq_len)
+
+        Returns:
+            A list of output shapes: [output_attn_output_shape, output_attn_weights_shape]
+        """
+        hidden_states_shape = input_shape[0]
+
+        batch_size = hidden_states_shape[0]
+        seq_len = hidden_states_shape[1]
+
+        output_attn_output_shape = (batch_size, seq_len, self.hidden_size)
+
+        output_attn_weights_shape = (
+            batch_size,
+            self.num_attention_heads,
+            seq_len,
+            seq_len,
+        )
+
+        return [output_attn_output_shape, output_attn_weights_shape]
+
 
 class SmolLM3MLP(layers.Layer):
+    """
+    Multi-layer perceptron (MLP) block for SmolLM3 model.
+
+    Args:
+        hidden_size: The hidden size of the MLP.
+        intermediate_size: The intermediate size of the MLP.
+        mlp_bias: Whether to use bias in MLP dense layers.
+    """
+
     def __init__(
         self, hidden_size: int, intermediate_size: int, mlp_bias: bool, **kwargs
     ):
@@ -150,14 +213,50 @@ class SmolLM3MLP(layers.Layer):
         )
 
     def call(self, x):
+        """
+        Forward pass for SmolLM3MLP.
+
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, hidden_size).
+        """
         gate_output = activations.silu(self.gate_proj(x))
         up_output = self.up_proj(x)
         intermediate_output = gate_output * up_output
         down_proj_output = self.down_proj(intermediate_output)
         return down_proj_output
 
+    def compute_output_shape(self, input_shape):
+        """
+        Computes the output shape of the layer.
+
+        Args:
+            input_shape: The input shape (batch_size, seq_len, hidden_size).
+
+        Returns:
+            The output shape, which is the same as the input shape:
+            (batch_size, seq_len, hidden_size).
+        """
+        return input_shape
+
 
 class SmolLM3DecoderLayer(layers.Layer):
+    """
+    Decoder layer for SmolLM3 model, combining self-attention and MLP.
+
+    Args:
+        hidden_size: The hidden size of the layer.
+        num_attention_heads: The number of attention heads.
+        num_key_value_heads: The number of key-value heads.
+        attention_bias: Whether to use bias in attention projections.
+        attention_dropout: Dropout rate for attention weights.
+        rope_layer_enabled_list: List indicating if RoPE is enabled for each layer.
+        layer_types: List of layer types.
+        layer_idx: Index of the current layer.
+        intermediate_size: The intermediate size of the MLP.
+        mlp_bias: Whether to use bias in MLP dense layers.
+        rms_norm_epsilon: Epsilon for RMSNormalization.
+    """
+
     def __init__(
         self,
         hidden_size: int,
@@ -206,8 +305,25 @@ class SmolLM3DecoderLayer(layers.Layer):
         self.attention_type = layer_types[layer_idx]
 
     def build(self, input_shape):
-        # Build sub-layers
-        self.self_attn.build(input_shape)
+        """
+        Builds the sub-layers based on the input shape.
+
+        Args:
+            input_shape: The input shape to the decoder layer
+                         (batch_size, seq_len, hidden_size).
+        """
+        # input_shape for SmolLM3DecoderLayer: (batch_size, seq_len, hidden_size)
+        batch_size = input_shape[0]
+        seq_len = input_shape[1]
+
+        head_dim = self.self_attn.head_dim
+        pos_emb_shape = (batch_size, seq_len, head_dim)
+
+        attn_mask_shape = (batch_size, 1, seq_len, seq_len)
+
+        self.self_attn.build(
+            [input_shape, (pos_emb_shape, pos_emb_shape), attn_mask_shape]
+        )
         self.mlp.build(input_shape)
         self.input_layernorm.build(input_shape)
         self.post_attention_layernorm.build(input_shape)
@@ -221,15 +337,21 @@ class SmolLM3DecoderLayer(layers.Layer):
         training=False,
         **kwargs,
     ):
+        """
+        Forward pass for SmolLM3DecoderLayer.
+
+        Args:
+            hidden_states: Input tensor of shape (batch_size, seq_len, hidden_size).
+            position_embeddings: Optional tuple of (cos, sin) tensors for RoPE.
+            training: Whether the layer is in training mode.
+        """
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
 
-        attention_mask = (
-            compute_causal_mask(
-                ops.shape(hidden_states)[0],
-                ops.shape(hidden_states)[1],
-                ops.shape(hidden_states)[1],
-            ),
+        attention_mask = compute_causal_mask(
+            ops.shape(hidden_states)[0],
+            ops.shape(hidden_states)[1],
+            ops.shape(hidden_states)[1],
         )
 
         # Self Attention
@@ -249,8 +371,32 @@ class SmolLM3DecoderLayer(layers.Layer):
 
         return hidden_states
 
+    def compute_output_shape(self, input_shape):
+        """
+        Computes the output shape of the layer.
+
+        Args:
+            input_shape: The input shape (batch_size, seq_len, hidden_size).
+
+        Returns:
+            The output shape, which is the same as the input shape:
+            (batch_size, seq_len, hidden_size).
+        """
+        return input_shape
+
 
 class SmolLM3RotaryEmbedding(layers.Layer):
+    """
+    Rotary Position Embedding (RoPE) layer for SmolLM3 model.
+
+    Args:
+        hidden_size: The hidden size of the model.
+        num_attention_heads: The number of attention heads.
+        max_position_embeddings: The maximum sequence length for position embeddings.
+        rope_theta: The theta value for RoPE.
+        partial_rotary_factor: The factor for partial rotary embedding.
+    """
+
     def __init__(
         self,
         hidden_size: int,
@@ -285,6 +431,14 @@ class SmolLM3RotaryEmbedding(layers.Layer):
         self.original_inv_freq = self.inv_freq
 
     def call(self, x, position_ids):
+        """
+        Forward pass for SmolLM3RotaryEmbedding.
+
+        Args:
+            x: Input tensor, typically query or key states.
+               Shape can vary, but the last dimension is head_dim.
+            position_ids: Tensor of position IDs of shape (batch_size, seq_len).
+        """
         inv_freq_expanded = ops.expand_dims(
             ops.expand_dims(self.inv_freq, axis=0), axis=-1
         )
@@ -309,3 +463,31 @@ class SmolLM3RotaryEmbedding(layers.Layer):
         sin = ops.sin(emb) * self.attention_scaling
 
         return ops.cast(cos, x.dtype), ops.cast(sin, x.dtype)
+
+    def compute_output_shape(self, input_shape):
+        """
+        Computes the output shape of the layer.
+
+        Args:
+            input_shape: A list/tuple of shapes for the inputs:
+                         [x_shape, position_ids_shape]
+                         - x_shape: (batch_size, ..., head_dim)
+                         - position_ids_shape: (batch_size, seq_len)
+
+        Returns:
+            A list of output shapes for (cos, sin):
+            [(batch_size, seq_len, head_dim), (batch_size, seq_len, head_dim)]
+        """
+        if input_shape[1] is not None and len(input_shape[1]) >= 2:
+            batch_size = input_shape[1][0]
+            seq_len = input_shape[1][1]
+        else:
+            # Fallback if position_ids_shape is None or malformed.
+            # In this case, the batch_size and seq_len are unknown.
+            batch_size = None
+            seq_len = None
+
+        # The output cos and sin have shape (batch_size, seq_len, head_dim)
+        output_shape = (batch_size, seq_len, self.head_dim)
+
+        return [output_shape, output_shape]

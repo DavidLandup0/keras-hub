@@ -41,15 +41,6 @@ def convert_weights(backbone, loader, transformers_config):
         keras_variable=backbone.get_layer("token_embedding").embeddings,
         hf_weight_key="model.embed_tokens.weight",
     )
-    if not backbone.tie_word_embeddings:
-        loader.port_weight(
-            keras_variable=backbone.get_layer(
-                "token_embedding"
-            ).reverse_embeddings,
-            hf_weight_key="lm_head.weight",
-            # rearrange_pattern="b a -> a b",
-            hook_fn=lambda hf_tensor, _: np.transpose(hf_tensor, axes=(1, 0)),
-        )
 
     def transpose_and_reshape(x, shape):
         return np.reshape(np.transpose(x), shape)

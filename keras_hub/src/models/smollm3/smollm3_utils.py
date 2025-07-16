@@ -48,8 +48,8 @@ def eager_attention_forward(
 
     # Apply attention mask if provided
     if attention_mask is not None:
-        causal_mask = attention_mask[:, :, :, : ops.shape(key_states)[-2]]
-        attn_weights = ops.add(attn_weights, causal_mask)
+        # causal_mask = attention_mask[:, :, :, : ops.shape(key_states)[-2]]
+        attn_weights = ops.add(attn_weights, attention_mask)
 
     attn_weights = ops.softmax(attn_weights, axis=-1)
     if not training:

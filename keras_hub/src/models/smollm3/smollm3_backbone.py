@@ -89,6 +89,7 @@ class SmolLM3Backbone(Backbone):
                 intermediate_size=intermediate_dim,
                 mlp_bias=mlp_bias,
                 rms_norm_epsilon=layer_norm_epsilon,
+                name=f"transformer_layer_{i}",
             )
             self.decoder_layers.append(layer)
 
@@ -109,14 +110,14 @@ class SmolLM3Backbone(Backbone):
         token_id_input = keras.Input(
             shape=(None,), dtype="int32", name="token_ids"
         )
-        position_ids = keras.Input(
+        position_id_input = keras.Input(
             shape=(None,), dtype="int32", name="position_ids"
         )
 
-        print("token id", token_id_input.shape)
         hidden_states = self.token_embedding(token_id_input)
-        print("hidden states id", hidden_states.shape)
-        position_embeddings = self.rotary_embedding(hidden_states, position_ids)
+        position_embeddings = self.rotary_embedding(
+            hidden_states, position_id_input
+        )
 
         for decoder_layer in self.decoder_layers[:num_hidden_layers]:
             hidden_states = decoder_layer(
@@ -125,10 +126,11 @@ class SmolLM3Backbone(Backbone):
                 **kwargs,
             )
 
-        sequence_output = self.layer_norm(hidden_states)
+        sequence_output = self.norm(hidden_states)
         super().__init__(
             inputs={
                 "token_ids": token_id_input,
+                "position_ids": position_id_input,
             },
             outputs=sequence_output,
             **kwargs,
