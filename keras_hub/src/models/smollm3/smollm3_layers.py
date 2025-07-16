@@ -82,6 +82,23 @@ class SmolLM3Attention(layers.Layer):
             else True
         )  # Default to True if index out of bounds
 
+    def build(self, input_shape):
+        """
+        Builds the internal Dense layers.
+        Args:
+            input_shape: A list/tuple of shapes for the inputs:
+                         [hidden_states_shape, position_embeddings_shape_tuple, attention_mask_shape]
+                         - hidden_states_shape: (batch_size, seq_len, hidden_size)
+        """
+        # The input shape to the Dense layers (q_proj, k_proj, v_proj, o_proj)
+        # is the same as the hidden_states input to SmolLM3Attention.
+        hidden_states_shape = input_shape[0]
+        self.q_proj.build(hidden_states_shape)
+        self.k_proj.build(hidden_states_shape)
+        self.v_proj.build(hidden_states_shape)
+        self.o_proj.build(hidden_states_shape)
+        super().build(input_shape)
+
     def call(
         self,
         hidden_states,
@@ -212,6 +229,25 @@ class SmolLM3MLP(layers.Layer):
             self.hidden_size, use_bias=self.mlp_bias, name="down_proj"
         )
 
+    def build(self, input_shape):
+        """
+        Builds the internal Dense layers.
+        Args:
+            input_shape: The shape of the input to this layer
+                         (batch_size, seq_len, hidden_size).
+        """
+        self.gate_proj.build(input_shape)
+        self.up_proj.build(input_shape)
+        # The down_proj takes intermediate_output, which has shape
+        # (batch_size, seq_len, intermediate_size)
+        down_proj_input_shape = (
+            input_shape[0],
+            input_shape[1],
+            self.intermediate_size,
+        )
+        self.down_proj.build(down_proj_input_shape)
+        super().build(input_shape)
+
     def call(self, x):
         """
         Forward pass for SmolLM3MLP.
@@ -321,9 +357,13 @@ class SmolLM3DecoderLayer(layers.Layer):
 
         attn_mask_shape = (batch_size, 1, seq_len, seq_len)
 
+        # Pass the correct input shape to self_attn's build method
+        # The input_shape for self_attn.build is a list:
+        # [hidden_states_shape, (pos_emb_shape, pos_emb_shape), attn_mask_shape]
         self.self_attn.build(
             [input_shape, (pos_emb_shape, pos_emb_shape), attn_mask_shape]
         )
+
         self.mlp.build(input_shape)
         self.input_layernorm.build(input_shape)
         self.post_attention_layernorm.build(input_shape)
@@ -430,7 +470,24 @@ class SmolLM3RotaryEmbedding(layers.Layer):
         )
         self.original_inv_freq = self.inv_freq
 
-    def call(self, x, position_ids):
+    def build(self, input_shape):
+        """
+        Builds the layer. For SmolLM3RotaryEmbedding, this mainly ensures
+        that the parent layer's build is called.
+        Args:
+            input_shape: A list/tuple of shapes for the inputs:
+                         [x_shape, position_ids_shape]
+                         - x_shape: (batch_size, ..., head_dim)
+                         - position_ids_shape: (batch_size, seq_len)
+        """
+        # No internal layers to explicitly build here, as inv_freq is added in __init__
+        super().build(input_shape)
+
+    def call(
+        self,
+        x,
+        position_ids,
+    ):
         """
         Forward pass for SmolLM3RotaryEmbedding.
 
