@@ -59,19 +59,11 @@ def convert_weights(backbone, loader, transformers_config):
             hf_weight_key=f"model.layers.{i}.self_attn.q_proj.weight",
             hook_fn=transpose_and_reshape,
         )
-        loader.port_weight(
-            keras_variable=decoder_layer.self_attn.q_norm.scale,
-            hf_weight_key=f"model.layers.{i}.self_attn.q_norm.weight",
-        )
         ## Key
         loader.port_weight(
             keras_variable=decoder_layer.self_attn.k_proj.kernel,
             hf_weight_key=f"model.layers.{i}.self_attn.k_proj.weight",
             hook_fn=transpose_and_reshape,
-        )
-        loader.port_weight(
-            keras_variable=decoder_layer.self_attn.k_norm.scale,
-            hf_weight_key=f"model.layers.{i}.self_attn.k_norm.weight",
         )
         ## Value
         loader.port_weight(
