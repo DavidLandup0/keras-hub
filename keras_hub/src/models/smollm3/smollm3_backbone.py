@@ -65,7 +65,6 @@ class SmolLM3Backbone(Backbone):
         max_position_embeddings,
         rope_theta,
         partial_rotary_factor,
-        num_hidden_layers,
         **kwargs,
     ):
         # === Layers ===
@@ -119,7 +118,7 @@ class SmolLM3Backbone(Backbone):
             hidden_states, position_id_input
         )
 
-        for decoder_layer in self.decoder_layers[:num_hidden_layers]:
+        for decoder_layer in self.decoder_layers[:num_layers]:
             hidden_states = decoder_layer(
                 hidden_states,
                 position_embeddings=position_embeddings,
