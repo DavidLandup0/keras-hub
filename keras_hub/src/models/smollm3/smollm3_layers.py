@@ -374,7 +374,7 @@ class SmolLM3DecoderLayer(layers.Layer):
         )
 
         self.attention_type = layer_types[layer_idx]
-
+        
     def _compute_self_attention_mask(
         self,
         decoder_sequence,
@@ -401,16 +401,15 @@ class SmolLM3DecoderLayer(layers.Layer):
             decoder_sequence, decoder_padding_mask, decoder_attention_mask
         )
         batch_size = ops.shape(decoder_sequence)[0]
-        input_length = output_length = ops.shape(decoder_sequence)[1]
-        # We need to handle a rectangular causal mask when doing cached
-        # decoding. For generative inference, `decoder_sequence` will
-        # generally be length 1, and `cache` will be the full generation length.
+        output_length = ops.shape(decoder_sequence)[1]
+        input_length = output_length  # Default if no cache is present
+
         if self_attention_cache is not None:
+            # shape: [batch, 2, num_heads, key_len, head_dim]
             input_length = ops.shape(self_attention_cache)[3]
 
         cache_update_index = (
-            0
-            if self_attention_cache_update_index is None
+            0 if self_attention_cache_update_index is None
             else self_attention_cache_update_index
         )
 
@@ -418,14 +417,13 @@ class SmolLM3DecoderLayer(layers.Layer):
             batch_size, input_length, output_length, cache_update_index
         )
 
-        if decoder_mask is not None:
-            # Expand decoder mask from [batch, tgt_len] to [batch, tgt_len, input_len]
-            # This is done by broadcasting
-            decoder_mask = ops.expand_dims(decoder_mask, axis=-1)
-            decoder_mask = ops.broadcast_to(decoder_mask, ops.shape(causal_mask))
-            return ops.minimum(decoder_mask, causal_mask)
+        # Combine causal and user-provided masks
+        return (
+            ops.minimum(decoder_mask, causal_mask)
+            if decoder_mask is not None
+            else causal_mask
+        )
 
-        return causal_mask
 
     def build(self, input_shape):
         """
