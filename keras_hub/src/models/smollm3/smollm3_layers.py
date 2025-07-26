@@ -381,6 +381,20 @@ class SmolLM3DecoderLayer(layers.Layer):
         self_attention_cache,
         self_attention_cache_update_index,
     ):
+        """Computes the self-attention mask combining causal, padding and
+        attention masks.
+
+        Args:
+            decoder_sequence: Input tensor.
+            decoder_padding_mask: Mask tensor for padding tokens.
+            decoder_attention_mask: Additional attention mask.
+            self_attention_cache: Optional cached key and value tensors.
+            self_attention_cache_update_index: Index at which to update the
+                cache.
+
+        Returns:
+            Combined attention mask tensor.
+        """
         decoder_mask = merge_padding_and_attention_mask(
             decoder_sequence, decoder_padding_mask, decoder_attention_mask
         )
