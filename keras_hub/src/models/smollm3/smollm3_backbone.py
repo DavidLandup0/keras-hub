@@ -7,7 +7,7 @@ from keras_hub.src.layers.modeling.reversible_embedding import (
 from keras_hub.src.models.backbone import Backbone
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3DecoderLayer
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3RotaryEmbedding
-
+from keras import ops
 
 @keras_hub_export(
     [
@@ -112,16 +112,20 @@ class SmolLM3Backbone(Backbone):
         token_id_input = keras.Input(
             shape=(None,), dtype="int32", name="token_ids"
         )
-        position_id_input = keras.Input(
-            shape=(None,), dtype="int32", name="position_ids"
-        )
+
         padding_mask_input = keras.Input(
             shape=(None,), dtype="int32", name="padding_mask"
         )
 
+        # Infer position IDs from the shape of token IDs.
+        seq_len = ops.shape(token_id_input)[1]
+        position_ids = ops.arange(0, seq_len, dtype="int32")
+        # Add a batch dimension to broadcast.
+        position_ids = ops.expand_dims(position_ids, axis=0)
+
         hidden_states = self.token_embedding(token_id_input)
         position_embeddings = self.rotary_embedding(
-            hidden_states, position_id_input
+            hidden_states, position_ids
         )
 
         for decoder_layer in self.transformer_layers[:num_layers]:
@@ -136,7 +140,6 @@ class SmolLM3Backbone(Backbone):
         super().__init__(
             inputs={
                 "token_ids": token_id_input,
-                "position_ids": position_id_input,
                 "padding_mask": padding_mask_input,
             },
             outputs=sequence_output,

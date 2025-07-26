@@ -41,7 +41,6 @@ class SmolLM3CausalLM(CausalLM):
     def call_with_cache(
         self,
         token_ids,
-        position_ids,
         cache,
         cache_update_index,
     ):
@@ -53,8 +52,9 @@ class SmolLM3CausalLM(CausalLM):
         and avoids recomputing the outputs of seen tokens.
 
         Args:
-            token_ids: a dense int Tensor with shape `(batch_size, 1)`.
-                       (For generation, this is typically a single new token.)
+            token_ids: a dense int Tensor with shape `(batch_size, seq_len)`.
+                       For prefill, `seq_len` is the prompt length. For generation,
+                       `seq_len` is typically 1.
             cache: a dense float Tensor, the cache of key and value.
                    Shape: (batch_size, num_layers, 2, max_seq_len, num_key_value_heads, head_dim)
             cache_update_index: int, or int Tensor. The index of current inputs
@@ -69,6 +69,20 @@ class SmolLM3CausalLM(CausalLM):
             the decoding cache.
         """
         x = self.backbone.token_embedding(token_ids)
+
+        # Infer position_ids based on the input shape.
+        seq_len = ops.shape(token_ids)[1]
+        if seq_len > 1:
+            # Prefill stage for the initial prompt.
+            position_ids = ops.arange(0, seq_len, dtype="int32")
+            position_ids = ops.expand_dims(position_ids, axis=0)
+        else:
+            # Decoding stage for a single token.
+            batch_size = ops.shape(token_ids)[0]
+            position_ids = ops.full(
+                (batch_size, 1), cache_update_index, dtype="int32"
+            )
+
         # Each decoder layer has a cache; we update them separately.
         position_embeddings = self.backbone.rotary_embedding(x, position_ids)
         updated_cache = []
@@ -86,7 +100,7 @@ class SmolLM3CausalLM(CausalLM):
         logits = self.backbone.token_embedding(x, reverse=True)
         return logits, hidden_states, cache
 
-    def _build_cache(self, token_ids, position_ids):
+    def _build_cache(self, token_ids):
         """Build an empty cache for use with `call_with_cache()`."""
         batch_size = ops.shape(token_ids)[0]
         max_length = ops.shape(token_ids)[1]
@@ -102,10 +116,10 @@ class SmolLM3CausalLM(CausalLM):
             head_dim,
         ]
         cache = ops.zeros(shape, dtype=self.compute_dtype)
-        index = ops.convert_to_tensor(0, dtype=self.compute_dtype)
+        index = ops.convert_to_tensor(0, dtype="int32")
         # Seed the cache.
         _, hidden_states, cache = self.call_with_cache(
-            token_ids, position_ids, cache, index
+            token_ids, cache, index
         )
         return hidden_states, cache
 
@@ -128,9 +142,8 @@ class SmolLM3CausalLM(CausalLM):
                 will stop.
         """
         token_ids, padding_mask = inputs["token_ids"], inputs["padding_mask"]
-        position_ids = ops.arange(token_ids.shape[0])
 
-        hidden_states, cache = self._build_cache(token_ids, position_ids)
+        hidden_states, cache = self._build_cache(token_ids)
         # Compute the lengths of all user inputted tokens ids.
         row_lengths = ops.sum(ops.cast(padding_mask, "int32"), axis=-1)
         # Start at the first index that has no user inputted id.
@@ -143,7 +156,6 @@ class SmolLM3CausalLM(CausalLM):
             prompt = ops.slice(prompt, [0, cache_update_index], [batch_size, 1])
             logits, hidden_states, cache = self.call_with_cache(
                 prompt,
-                position_ids,
                 cache,
                 cache_update_index,
             )
