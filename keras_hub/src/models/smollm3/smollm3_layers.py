@@ -151,18 +151,13 @@ class SmolLM3Attention(layers.Layer):
         if self_attention_cache is not None:
             key_cache = self_attention_cache[:, 0, ...]
             value_cache = self_attention_cache[:, 1, ...]
-            print("key_cache", key_cache.shape)
-            print("value_cache", value_cache.shape)
 
             if self_attention_cache_update_index is None:
                 key_states = key_cache
                 value_states = value_cache
             else:
                 key_update, value_update = _compute_kv_values(hidden_states)
-                print("key_update", key_update.shape)
-                print("value_update", value_update.shape)
                 start = [0, 0, self_attention_cache_update_index, 0]
-                print("start", start)
                 key_states = ops.slice_update(key_cache, start, key_update)
                 value_states = ops.slice_update(
                     value_cache, start, value_update
@@ -409,7 +404,8 @@ class SmolLM3DecoderLayer(layers.Layer):
             input_length = ops.shape(self_attention_cache)[3]
 
         cache_update_index = (
-            0 if self_attention_cache_update_index is None
+            0
+            if self_attention_cache_update_index is None
             else self_attention_cache_update_index
         )
 
