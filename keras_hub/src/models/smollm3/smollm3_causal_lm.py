@@ -103,8 +103,7 @@ class SmolLM3CausalLM(CausalLM):
     def _build_cache(self, token_ids):
         """Build an empty cache for use with `call_with_cache()`."""
         batch_size = ops.shape(token_ids)[0]
-        #max_length = ops.shape(token_ids)[1]
-        max_length = self.sampler.max_length
+        max_length = ops.shape(token_ids)[1]
         num_layers = self.backbone.num_layers
         num_key_value_heads = self.backbone.num_key_value_heads
         head_dim = self.backbone.hidden_dim // self.backbone.num_attention_heads
@@ -119,9 +118,7 @@ class SmolLM3CausalLM(CausalLM):
         cache = ops.zeros(shape, dtype=self.compute_dtype)
         index = ops.convert_to_tensor(0, dtype="int32")
         # Seed the cache.
-        _, hidden_states, cache = self.call_with_cache(
-            token_ids, cache, index
-        )
+        _, hidden_states, cache = self.call_with_cache(token_ids, cache, index)
         return hidden_states, cache
 
     def generate_step(

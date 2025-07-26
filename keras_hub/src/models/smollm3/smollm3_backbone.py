@@ -1,4 +1,5 @@
 import keras
+from keras import ops
 
 from keras_hub.src.api_export import keras_hub_export
 from keras_hub.src.layers.modeling.reversible_embedding import (
@@ -7,7 +8,7 @@ from keras_hub.src.layers.modeling.reversible_embedding import (
 from keras_hub.src.models.backbone import Backbone
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3DecoderLayer
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3RotaryEmbedding
-from keras import ops
+
 
 @keras_hub_export(
     [
@@ -124,9 +125,7 @@ class SmolLM3Backbone(Backbone):
         position_ids = ops.expand_dims(position_ids, axis=0)
 
         hidden_states = self.token_embedding(token_id_input)
-        position_embeddings = self.rotary_embedding(
-            hidden_states, position_ids
-        )
+        position_embeddings = self.rotary_embedding(hidden_states, position_ids)
 
         for decoder_layer in self.transformer_layers[:num_layers]:
             hidden_states = decoder_layer(
