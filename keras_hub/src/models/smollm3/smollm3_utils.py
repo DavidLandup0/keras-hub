@@ -54,6 +54,7 @@ def eager_attention_forward(
     )
 
     if attention_mask is not None:
+        attention_mask = attention_mask.expand(-1, attn_weights.shape[1], -1, -1)
         attn_weights = softmax_op(attn_weights, attention_mask[:, None, :, :])
     else:
         attn_weights = softmax_op(attn_weights)

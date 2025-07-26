@@ -418,11 +418,14 @@ class SmolLM3DecoderLayer(layers.Layer):
             batch_size, input_length, output_length, cache_update_index
         )
 
-        return (
-            ops.minimum(decoder_mask, causal_mask)
-            if decoder_mask is not None
-            else causal_mask
-        )
+        if decoder_mask is not None:
+            # Expand decoder mask from [batch, tgt_len] to [batch, tgt_len, input_len]
+            # This is done by broadcasting
+            decoder_mask = ops.expand_dims(decoder_mask, axis=-1)
+            decoder_mask = ops.broadcast_to(decoder_mask, ops.shape(causal_mask))
+            return ops.minimum(decoder_mask, causal_mask)
+
+        return causal_mask
 
     def build(self, input_shape):
         """
