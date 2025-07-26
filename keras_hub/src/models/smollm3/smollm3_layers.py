@@ -161,7 +161,7 @@ class SmolLM3Attention(layers.Layer):
                 key_update, value_update = _compute_kv_values(hidden_states)
                 print("key_update", key_update.shape)
                 print("value_update", value_update.shape)
-                start = [0, self_attention_cache_update_index, 0, 0]
+                start = [0, 0, self_attention_cache_update_index, 0]
                 print("start", start)
                 key_states = ops.slice_update(key_cache, start, key_update)
                 value_states = ops.slice_update(
@@ -374,7 +374,7 @@ class SmolLM3DecoderLayer(layers.Layer):
         )
 
         self.attention_type = layer_types[layer_idx]
-        
+
     def _compute_self_attention_mask(
         self,
         decoder_sequence,
@@ -402,10 +402,10 @@ class SmolLM3DecoderLayer(layers.Layer):
         )
         batch_size = ops.shape(decoder_sequence)[0]
         output_length = ops.shape(decoder_sequence)[1]
-        input_length = output_length  # Default if no cache is present
+        input_length = output_length
 
         if self_attention_cache is not None:
-            # shape: [batch, 2, num_heads, key_len, head_dim]
+            # [batch, 2, num_heads, key_len, head_dim]
             input_length = ops.shape(self_attention_cache)[3]
 
         cache_update_index = (
@@ -417,13 +417,11 @@ class SmolLM3DecoderLayer(layers.Layer):
             batch_size, input_length, output_length, cache_update_index
         )
 
-        # Combine causal and user-provided masks
         return (
             ops.minimum(decoder_mask, causal_mask)
             if decoder_mask is not None
             else causal_mask
         )
-
 
     def build(self, input_shape):
         """
