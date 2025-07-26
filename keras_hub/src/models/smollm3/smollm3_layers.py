@@ -406,7 +406,7 @@ class SmolLM3DecoderLayer(layers.Layer):
         # decoding. For generative inference, `decoder_sequence` will
         # generally be length 1, and `cache` will be the full generation length.
         if self_attention_cache is not None:
-            input_length = ops.shape(self_attention_cache)[2]
+            input_length = ops.shape(self_attention_cache)[3]
 
         cache_update_index = (
             0
