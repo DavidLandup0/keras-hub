@@ -1,3 +1,4 @@
+from keras import layers
 from keras import ops
 from keras import random
 
@@ -38,6 +39,12 @@ def eager_attention_forward(
     dropout=0.0,
     training=False,
 ):
+    softmax_op = layers.Softmax(
+        axis=-1,
+        dtype="float32",
+        name="attention_softmax",
+    )
+
     key_states = repeat_kv(key, module.num_key_value_groups)
     value_states = repeat_kv(value, module.num_key_value_groups)
 
@@ -47,10 +54,9 @@ def eager_attention_forward(
     )
 
     if attention_mask is not None:
-        causal_mask = attention_mask[:, :, :, : ops.shape(key_states)[-2]]
-        attn_weights = ops.add(attn_weights, causal_mask)
-
-    attn_weights = ops.softmax(attn_weights, axis=-1)
+        attn_weights = softmax_op(attn_weights, attention_mask[:, None, :, :])
+    else:
+        attn_weights = softmax_op(attn_weights)
 
     if training:
         attn_weights = random.dropout(attn_weights, rate=dropout)
