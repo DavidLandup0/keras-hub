@@ -112,7 +112,7 @@ class SmolLM3Backbone(Backbone):
         self.rotary_embedding = RotaryEmbedding(
             max_wavelength=rope_theta,
             scaling_factor=rope_scaling,
-            dtype=self.dtype_policy
+            dtype=self.token_embedding.dtype_policy
         )
 
         # === Functional Model ===
@@ -161,6 +161,7 @@ class SmolLM3Backbone(Backbone):
         self.max_position_embeddings = max_position_embeddings
         self.rope_theta = rope_theta
         self.partial_rotary_factor = partial_rotary_factor
+        self.rope_scaling = rope_scaling
 
     def get_config(self):
         config = super().get_config()
@@ -181,6 +182,7 @@ class SmolLM3Backbone(Backbone):
                 "max_position_embeddings": self.max_position_embeddings,
                 "rope_theta": self.rope_theta,
                 "partial_rotary_factor": self.partial_rotary_factor,
+                "rope_scaling": self.rope_scaling
             }
         )
         return config
