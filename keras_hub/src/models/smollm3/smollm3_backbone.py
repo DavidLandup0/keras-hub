@@ -123,14 +123,8 @@ class SmolLM3Backbone(Backbone):
             shape=(None,), dtype="int32", name="padding_mask"
         )
 
-        # Infer position IDs from the shape of token IDs.
-        seq_len = ops.shape(token_id_input)[1]
-        position_ids = ops.arange(0, seq_len, dtype="int32")
-        # Add a batch dimension to broadcast.
-        position_ids = ops.expand_dims(position_ids, axis=0)
-
         hidden_states = self.token_embedding(token_id_input)
-        position_embeddings = self.rotary_embedding(hidden_states, position_ids)
+        position_embeddings = self.rotary_embedding(hidden_states)
 
         for decoder_layer in self.transformer_layers[:num_layers]:
             hidden_states = decoder_layer(

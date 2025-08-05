@@ -69,15 +69,8 @@ class SmolLM3CausalLM(CausalLM):
         """
         x = self.backbone.token_embedding(token_ids)
 
-        # Infer position_ids based on the input shape.
-        seq_len = ops.shape(token_ids)[1]
-        batch_size = ops.shape(token_ids)[0]
-        position_ids = ops.arange(0, seq_len, dtype="int32")
-        position_ids = ops.expand_dims(position_ids, axis=0)   # (1, seq_len)
-        position_ids = ops.broadcast_to(position_ids, (batch_size, seq_len))
-
         # Each decoder layer has a cache; we update them separately.
-        position_embeddings = self.backbone.rotary_embedding(x, position_ids)
+        position_embeddings = self.backbone.rotary_embedding(x)
         updated_cache = []
         for i in range(self.backbone.num_layers):
             current_cache = cache[:, i, ...]
