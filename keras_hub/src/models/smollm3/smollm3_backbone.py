@@ -118,6 +118,7 @@ class SmolLM3Backbone(Backbone):
         )
 
         cache_update_index = kwargs.get('self_attention_cache_index')
+        print(cache_update_index)
 
         start_index = (
             cache_update_index if cache_update_index is not None else 0
