@@ -124,10 +124,9 @@ class SmolLM3Backbone(Backbone):
         )
 
         hidden_states = self.token_embedding(token_id_input)
-        
+        position_embeddings = self.rotary_embedding(hidden_states, start_index=start_index)
 
         for decoder_layer in self.transformer_layers[:num_layers]:
-            position_embeddings = self.rotary_embedding(hidden_states, start_index=start_index)
             hidden_states = decoder_layer(
                 hidden_states,
                 position_embeddings=position_embeddings,

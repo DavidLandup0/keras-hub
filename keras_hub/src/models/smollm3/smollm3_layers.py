@@ -601,6 +601,7 @@ class SmolLM3RotaryEmbedding(layers.Layer):
         seq_len = ops.shape(x)[1]
         positions = ops.arange(seq_len, dtype="float32")
         positions = positions + ops.cast(start_index, dtype="float32")
+        print(start_index)
 
         inv_freq_expanded = ops.broadcast_to(
             inv_freq_expanded, (batch_size, ops.shape(self.inv_freq)[0], 1)
