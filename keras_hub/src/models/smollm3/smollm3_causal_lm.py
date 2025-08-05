@@ -292,13 +292,8 @@ class SmolLM3CausalLM(CausalLM):
         token_embeddings = self.backbone.token_embedding(token_ids)
         x = layer_intercept_fn(token_embeddings, -1)
 
-        # Generate position_ids for the full sequence
-        seq_len = ops.shape(token_ids)[1]
-        position_ids = ops.arange(0, seq_len, dtype="int32")[None, :]
-        position_ids = ops.broadcast_to(position_ids, (batch_shape[0], seq_len))
-
         # Get position embeddings for the full sequence
-        position_embeddings = self.backbone.rotary_embedding(x, position_ids)
+        position_embeddings = self.backbone.rotary_embedding(x)
 
         for i, transformer_layer in enumerate(self.backbone.transformer_layers):
             x = transformer_layer(
