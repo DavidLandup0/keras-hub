@@ -78,7 +78,6 @@ class SmolLM3Backbone(Backbone):
             name="token_embedding",
         )
         self.transformer_layers = []
-
         for i in range(num_layers):
             layer = SmolLM3DecoderLayer(
                 hidden_size=hidden_dim,

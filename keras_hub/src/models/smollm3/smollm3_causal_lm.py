@@ -30,8 +30,7 @@ class SmolLM3CausalLM(CausalLM):
         # rather than "backbone.inputs" which is the flattened list of inputs.
         inputs = backbone.input
         hidden_states = backbone(inputs)
-        # Use self.backbone for clarity and consistency
-        outputs = self.backbone.token_embedding(hidden_states, reverse=True)
+        outputs = backbone.token_embedding(hidden_states, reverse=True)
         super().__init__(
             inputs=inputs,
             outputs=outputs,
@@ -72,16 +71,7 @@ class SmolLM3CausalLM(CausalLM):
 
         # Infer position_ids based on the input shape.
         seq_len = ops.shape(token_ids)[1]
-        if seq_len > 1:
-            # Prefill stage for the initial prompt.
-            position_ids = ops.arange(0, seq_len, dtype="int32")
-            position_ids = ops.expand_dims(position_ids, axis=0)
-        else:
-            # Decoding stage for a single token.
-            batch_size = ops.shape(token_ids)[0]
-            position_ids = ops.full(
-                (batch_size, 1), cache_update_index, dtype="int32"
-            )
+        position_ids = ops.arange(0, seq_len, dtype="int32")
 
         # Each decoder layer has a cache; we update them separately.
         position_embeddings = self.backbone.rotary_embedding(x, position_ids)
