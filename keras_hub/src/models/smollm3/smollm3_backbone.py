@@ -70,7 +70,7 @@ class SmolLM3Backbone(Backbone):
         max_position_embeddings,
         rope_theta,
         partial_rotary_factor,
-        rope_scaling,
+        rope_scaling=1,
         **kwargs,
     ):
         # === Layers ===
