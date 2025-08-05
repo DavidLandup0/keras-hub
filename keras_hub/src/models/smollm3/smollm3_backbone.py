@@ -111,7 +111,8 @@ class SmolLM3Backbone(Backbone):
         #)
         self.rotary_embedding = RotaryEmbedding(
             max_wavelength=rope_theta,
-            scaling_factor=rope_scaling
+            scaling_factor=rope_scaling,
+            dtype=self.dtype_policy
         )
 
         # === Functional Model ===
