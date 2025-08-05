@@ -30,6 +30,7 @@ def convert_backbone_config(transformers_config):
         "rope_layer_enabled_list": transformers_config["no_rope_layers"],
         "layer_types": transformers_config["layer_types"],
         "mlp_bias": transformers_config["mlp_bias"],
+        "rope_scaling": transformers_config["rope_scaling"]
     }
 
 

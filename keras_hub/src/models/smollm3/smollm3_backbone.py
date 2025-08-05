@@ -8,6 +8,7 @@ from keras_hub.src.layers.modeling.reversible_embedding import (
 from keras_hub.src.models.backbone import Backbone
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3DecoderLayer
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3RotaryEmbedding
+from keras_hub.src.layers.modeling.rotary_embedding import RotaryEmbedding
 
 
 @keras_hub_export(
@@ -69,6 +70,7 @@ class SmolLM3Backbone(Backbone):
         max_position_embeddings,
         rope_theta,
         partial_rotary_factor,
+        rope_scaling,
         **kwargs,
     ):
         # === Layers ===
@@ -100,12 +102,16 @@ class SmolLM3Backbone(Backbone):
             name="sequence_output_layernorm",
         )
 
-        self.rotary_embedding = SmolLM3RotaryEmbedding(
-            hidden_size=hidden_dim,
-            num_attention_heads=num_attention_heads,
-            max_position_embeddings=max_position_embeddings,
-            rope_theta=rope_theta,
-            partial_rotary_factor=partial_rotary_factor,
+        #self.rotary_embedding = SmolLM3RotaryEmbedding(
+        #    hidden_size=hidden_dim,
+        #    num_attention_heads=num_attention_heads,
+        #    max_position_embeddings=max_position_embeddings,
+        #    rope_theta=rope_theta,
+        #    partial_rotary_factor=partial_rotary_factor,
+        #)
+        self.rotary_embedding = RotaryEmbedding(
+            max_wavelength=rope_theta,
+            scaling_factor=rope_scaling
         )
 
         # === Functional Model ===
