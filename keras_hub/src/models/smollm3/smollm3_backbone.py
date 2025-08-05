@@ -8,7 +8,6 @@ from keras_hub.src.layers.modeling.reversible_embedding import (
 from keras_hub.src.models.backbone import Backbone
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3DecoderLayer
 from keras_hub.src.models.smollm3.smollm3_layers import SmolLM3RotaryEmbedding
-from keras_hub.src.layers.modeling.rotary_embedding import RotaryEmbedding
 
 
 @keras_hub_export(
@@ -70,7 +69,6 @@ class SmolLM3Backbone(Backbone):
         max_position_embeddings,
         rope_theta,
         partial_rotary_factor,
-        rope_scaling=1,
         **kwargs,
     ):
         # === Layers ===
@@ -102,17 +100,12 @@ class SmolLM3Backbone(Backbone):
             name="sequence_output_layernorm",
         )
 
-        #self.rotary_embedding = SmolLM3RotaryEmbedding(
-        #    hidden_size=hidden_dim,
-        #    num_attention_heads=num_attention_heads,
-        #    max_position_embeddings=max_position_embeddings,
-        #    rope_theta=rope_theta,
-        #    partial_rotary_factor=partial_rotary_factor,
-        #)
-        self.rotary_embedding = RotaryEmbedding(
-            max_wavelength=rope_theta,
-            scaling_factor=rope_scaling,
-            dtype=self.token_embedding.dtype_policy
+        self.rotary_embedding = SmolLM3RotaryEmbedding(
+            hidden_size=hidden_dim,
+            num_attention_heads=num_attention_heads,
+            max_position_embeddings=max_position_embeddings,
+            rope_theta=rope_theta,
+            partial_rotary_factor=partial_rotary_factor,
         )
 
         # === Functional Model ===
@@ -124,8 +117,14 @@ class SmolLM3Backbone(Backbone):
             shape=(None,), dtype="int32", name="padding_mask"
         )
 
+        cache_update_index = kwargs.get('self_attention_cache_index')
+
+        start_index = (
+            cache_update_index if cache_update_index is not None else 0
+        )
+
         hidden_states = self.token_embedding(token_id_input)
-        position_embeddings = self.rotary_embedding(hidden_states)
+        position_embeddings = self.rotary_embedding(hidden_states, start_index)
 
         for decoder_layer in self.transformer_layers[:num_layers]:
             hidden_states = decoder_layer(
@@ -161,7 +160,6 @@ class SmolLM3Backbone(Backbone):
         self.max_position_embeddings = max_position_embeddings
         self.rope_theta = rope_theta
         self.partial_rotary_factor = partial_rotary_factor
-        self.rope_scaling = rope_scaling
 
     def get_config(self):
         config = super().get_config()
@@ -182,7 +180,6 @@ class SmolLM3Backbone(Backbone):
                 "max_position_embeddings": self.max_position_embeddings,
                 "rope_theta": self.rope_theta,
                 "partial_rotary_factor": self.partial_rotary_factor,
-                "rope_scaling": self.rope_scaling
             }
         )
         return config

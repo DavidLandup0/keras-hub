@@ -583,7 +583,7 @@ class SmolLM3RotaryEmbedding(layers.Layer):
     def call(
         self,
         x,
-        position_ids,
+        start_index=0,
     ):
         """
         Forward pass for SmolLM3RotaryEmbedding.
@@ -596,13 +596,17 @@ class SmolLM3RotaryEmbedding(layers.Layer):
         inv_freq_expanded = ops.expand_dims(
             ops.expand_dims(self.inv_freq, axis=0), axis=-1
         )
+        
+        batch_size = ops.shape(x)[0]
+        seq_len = ops.shape(x)[1]
+        positions = ops.arange(seq_len, dtype="float32")
+        positions + ops.cast(start_index, dtype="float32")
 
-        batch_size = ops.shape(position_ids)[0]
         inv_freq_expanded = ops.broadcast_to(
             inv_freq_expanded, (batch_size, ops.shape(self.inv_freq)[0], 1)
         )
 
-        position_ids_expanded = ops.expand_dims(position_ids, axis=1)
+        position_ids_expanded = ops.expand_dims(positions, axis=1)
 
         freqs = ops.matmul(
             ops.cast(inv_freq_expanded, "float32"),
