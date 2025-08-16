@@ -70,7 +70,6 @@ class SmolLM3CausalLM(CausalLM):
         x = self.backbone.token_embedding(token_ids)
 
         # Each decoder layer has a cache; we update them separately.
-        
         updated_cache = []
         position_embeddings = self.backbone.rotary_embedding(x, start_index=cache_update_index)
         
@@ -83,7 +82,7 @@ class SmolLM3CausalLM(CausalLM):
                 self_attention_cache=current_cache,
                 self_attention_cache_update_index=cache_update_index,
             )
-            print(x.shape, x)
+            print(next_cache.shape)
             updated_cache.append(next_cache)
         cache = ops.stack(updated_cache, axis=1)
         hidden_states = x = self.backbone.norm(x)
