@@ -126,12 +126,26 @@ class SmolLM3Attention(layers.Layer):
         )
 
         input_shape = ops.shape(hidden_states)[:-1]
-        query_states = self.q_proj(hidden_states)
+        hidden_shape = (*input_shape, self.num_attention_heads, self.head_dim)
+
+        query_states = ops.reshape(self.q_proj(hidden_states), hidden_shape)
+        # (batch, num_heads, seq_len, head_dim)
+        query_states = ops.transpose(query_states, axes=(0, 2, 1, 3))
 
         def _compute_kv_values(x_input):
-            key_states = self.k_proj(x_input)
-            value_states = self.v_proj(x_input)
+            kv_hidden_shape = (
+                *input_shape,
+                self.num_key_value_heads,
+                self.head_dim,
+            )
 
+            key_states = ops.reshape(self.k_proj(x_input), kv_hidden_shape)
+            value_states = ops.reshape(
+                self.v_proj(x_input), kv_hidden_shape
+            )
+
+            #key_states = ops.transpose(key_states_raw, axes=(0, 2, 1, 3))
+            #value_states = ops.transpose(value_states_raw, axes=(0, 2, 1, 3))
             return key_states, value_states
 
         if self_attention_cache is not None:
