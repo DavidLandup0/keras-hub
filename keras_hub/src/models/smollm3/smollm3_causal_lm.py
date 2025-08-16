@@ -100,8 +100,8 @@ class SmolLM3CausalLM(CausalLM):
             batch_size,
             num_layers,
             2,
-            num_key_value_heads,
             max_length,
+            num_key_value_heads,
             head_dim,
         ]
         cache = ops.zeros(shape, dtype=self.compute_dtype)
