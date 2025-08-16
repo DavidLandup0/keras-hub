@@ -139,7 +139,7 @@ class SmolLM3Attention(layers.Layer):
         input_shape = ops.shape(hidden_states)[:-1]
         hidden_shape = (*input_shape, self.num_attention_heads, self.head_dim)
 
-        query_states = ops.reshape(self.q_proj(hidden_states), hidden_shape)
+        query = ops.reshape(self.q_proj(hidden_states), hidden_shape)
         # (batch, num_heads, seq_len, head_dim)
         #query_states = ops.transpose(query_states, axes=(0, 2, 1, 3))
 
@@ -186,14 +186,16 @@ class SmolLM3Attention(layers.Layer):
             key_states, value_states = _compute_kv_values(hidden_states)
 
         if self.use_rope:
-            query_states = self.rotary_embedding(query_states, start_index=start_index)
-            key_states = self.rotary_embedding(key_states, start_index=start_index)
+            query = self.rotary_embedding(query, start_index=start_index)
+            key = self.rotary_embedding(key_states, start_index=start_index)
 
+        key = ops.repeat(key, repeats=self.num_key_value_groups, axis=2)
+        value = ops.repeat(value, repeats=self.num_key_value_groups, axis=2)
+        
         attn_output = eager_attention_forward(
-            module=self,
-            query=query_states,
-            key=key_states,
-            value=value_states,
+            query=query,
+            key=key,
+            value=value,
             dropout=self.attention_dropout,
             scaling=self.scaling,
             training=self.training,

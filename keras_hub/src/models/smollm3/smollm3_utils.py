@@ -30,7 +30,6 @@ def repeat_kv(hidden_states, n_rep):
 
 
 def eager_attention_forward(
-    module,
     query,
     key,
     value,
@@ -45,11 +44,8 @@ def eager_attention_forward(
         name="attention_softmax",
     )
 
-    key_states = repeat_kv(key, module.num_key_value_groups)
-    value_states = repeat_kv(value, module.num_key_value_groups)
-
     attn_weights = (
-        ops.matmul(query, ops.transpose(key_states, axes=(0, 1, 3, 2)))
+        ops.matmul(query, ops.transpose(key, axes=(0, 1, 3, 2)))
         * scaling
     )
 
@@ -60,7 +56,7 @@ def eager_attention_forward(
 
     if training:
         attn_weights = random.dropout(attn_weights, rate=dropout)
-    attn_output = ops.matmul(attn_weights, value_states)
+    attn_output = ops.matmul(attn_weights, value)
     attn_output = ops.transpose(attn_output, axes=(0, 2, 1, 3))
 
     return attn_output
