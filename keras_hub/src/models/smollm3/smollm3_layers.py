@@ -51,6 +51,14 @@ class SmolLM3Attention(layers.Layer):
         self.rope_layer_enabled_list = rope_layer_enabled_list
         self.layer_types = layer_types
 
+        self.rotary_embedding = SmolLM3RotaryEmbedding(
+            hidden_size=hidden_size,
+            num_attention_heads=num_attention_heads,
+            max_position_embeddings=65536,
+            rope_theta=5000000.0,
+            partial_rotary_factor=0.5,
+        )
+
         self.layer_idx = layer_idx
 
         self.head_dim = self.hidden_size // self.num_attention_heads
@@ -124,6 +132,9 @@ class SmolLM3Attention(layers.Layer):
         self_attention_cache_update_index = kwargs.get(
             "self_attention_cache_update_index", None
         )
+        start_index = (
+            self_attention_cache_update_index if self_attention_cache_update_index is not None else 0
+        )
 
         input_shape = ops.shape(hidden_states)[:-1]
         hidden_shape = (*input_shape, self.num_attention_heads, self.head_dim)
@@ -175,10 +186,8 @@ class SmolLM3Attention(layers.Layer):
             key_states, value_states = _compute_kv_values(hidden_states)
 
         if self.use_rope:
-            cos, sin = position_embeddings
-            query_states, key_states = apply_rotary_pos_emb(
-                query_states, key_states, cos, sin
-            )
+            query_states = self.rotary_embedding(query_states, start_index=start_index)
+            key_states = self.rotary_embedding(key_states, start_index=start_index)
 
         attn_output = eager_attention_forward(
             module=self,
@@ -601,7 +610,6 @@ class SmolLM3RotaryEmbedding(layers.Layer):
         seq_len = ops.shape(x)[1]
         positions = ops.arange(seq_len, dtype="float32")
         positions = positions + ops.cast(start_index, dtype="float32")
-        print(start_index)
 
         inv_freq_expanded = ops.broadcast_to(
             inv_freq_expanded, (batch_size, ops.shape(self.inv_freq)[0], 1)
