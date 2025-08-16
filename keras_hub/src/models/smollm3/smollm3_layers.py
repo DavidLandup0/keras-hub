@@ -140,8 +140,6 @@ class SmolLM3Attention(layers.Layer):
         hidden_shape = (*input_shape, self.num_attention_heads, self.head_dim)
 
         query = ops.reshape(self.q_proj(hidden_states), hidden_shape)
-        # (batch, num_heads, seq_len, head_dim)
-        #query_states = ops.transpose(query_states, axes=(0, 2, 1, 3))
 
         def _compute_kv_values(x_input):
             kv_hidden_shape = (
@@ -150,31 +148,29 @@ class SmolLM3Attention(layers.Layer):
                 self.head_dim,
             )
 
-            key_states = ops.reshape(self.k_proj(x_input), kv_hidden_shape)
-            value_states = ops.reshape(
+            key = ops.reshape(self.k_proj(x_input), kv_hidden_shape)
+            value = ops.reshape(
                 self.v_proj(x_input), kv_hidden_shape
             )
 
-            #key_states = ops.transpose(key_states_raw, axes=(0, 2, 1, 3))
-            #value_states = ops.transpose(value_states_raw, axes=(0, 2, 1, 3))
-            return key_states, value_states
+            return key, value
 
         if self_attention_cache is not None:
             key_cache = self_attention_cache[:, 0, ...]
             value_cache = self_attention_cache[:, 1, ...]
 
             if self_attention_cache_update_index is None:
-                key_states = key_cache
-                value_states = value_cache
+                key = key_cache
+                value = value_cache
             else:
                 key_update, value_update = _compute_kv_values(hidden_states)
                 start = [0, self_attention_cache_update_index, 0, 0]
-                key_states = ops.slice_update(key_cache, start, key_update)
-                value_states = ops.slice_update(
+                key = ops.slice_update(key_cache, start, key_update)
+                value = ops.slice_update(
                     value_cache, start, value_update
                 )
                 self_attention_cache = ops.stack(
-                    (key_states, value_states), axis=1
+                    (key, value), axis=1
                 )
         else:
             if self_attention_cache_update_index is not None:
@@ -183,11 +179,11 @@ class SmolLM3Attention(layers.Layer):
                     f"`None`. Received: self_attention_cache={self_attention_cache}, "
                     f"self_attention_cache_update_index={self_attention_cache_update_index}"
                 )
-            key_states, value_states = _compute_kv_values(hidden_states)
+            key, value = _compute_kv_values(hidden_states)
 
         if self.use_rope:
             query = self.rotary_embedding(query, start_index=start_index)
-            key = self.rotary_embedding(key_states, start_index=start_index)
+            key = self.rotary_embedding(key, start_index=start_index)
 
         key = ops.repeat(key, repeats=self.num_key_value_groups, axis=2)
         value = ops.repeat(value, repeats=self.num_key_value_groups, axis=2)
