@@ -130,7 +130,7 @@ class SmolLM3Attention(layers.Layer):
 
         query_states = ops.reshape(self.q_proj(hidden_states), hidden_shape)
         # (batch, num_heads, seq_len, head_dim)
-        query_states = ops.transpose(query_states, axes=(0, 2, 1, 3))
+        #query_states = ops.transpose(query_states, axes=(0, 2, 1, 3))
 
         def _compute_kv_values(x_input):
             kv_hidden_shape = (
