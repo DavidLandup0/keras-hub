@@ -123,18 +123,18 @@ class SmolLM3Backbone(Backbone):
             cache_update_index if cache_update_index is not None else 0
         )
 
-        hidden_states = self.token_embedding(token_id_input)
-        position_embeddings = self.rotary_embedding(hidden_states, start_index=start_index)
+        x = self.token_embedding(token_id_input)
+        position_embeddings = self.rotary_embedding(x, start_index=start_index)
 
-        for decoder_layer in self.transformer_layers[:num_layers]:
-            hidden_states = decoder_layer(
-                hidden_states,
+        for decoder_layer in self.transformer_layers:
+            x = decoder_layer(
+                x,
                 position_embeddings=position_embeddings,
                 decoder_padding_mask=padding_mask_input,
                 **kwargs,
             )
 
-        sequence_output = self.norm(hidden_states)
+        sequence_output = self.norm(x)
         super().__init__(
             inputs={
                 "token_ids": token_id_input,
