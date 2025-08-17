@@ -122,7 +122,6 @@ class SmolLM3Attention(layers.Layer):
         self.q_proj.build(hidden_states_shape)
         self.k_proj.build(hidden_states_shape)
         self.v_proj.build(hidden_states_shape)
-        self.o_proj.build(hidden_states_shape)
         super().build(input_shape)
 
     def call(
