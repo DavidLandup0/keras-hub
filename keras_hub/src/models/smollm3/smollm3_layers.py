@@ -53,12 +53,7 @@ class SmolLM3Attention(layers.Layer):
         self.layer_types = layer_types
 
         self.rotary_embedding = RotaryEmbedding(
-            hidden_size=hidden_size,
-            num_attention_heads=num_attention_heads,
-            max_position_embeddings=65536,
             max_wavelength=5000000.0,
-            partial_rotary_factor=0.5,
-            scaling_factor=1.0
         )
 
         self.layer_idx = layer_idx
