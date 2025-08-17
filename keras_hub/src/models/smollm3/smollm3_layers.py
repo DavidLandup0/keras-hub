@@ -51,6 +51,8 @@ class SmolLM3Attention(layers.Layer):
         self.attention_dropout = attention_dropout
         self.rope_layer_enabled_list = rope_layer_enabled_list
         self.layer_types = layer_types
+        self._dot_product_equation = "bquh,bkuh->buqk"
+        self._combine_equation = "buqk,bkuh->bquh"
 
         self.rotary_embedding = RotaryEmbedding(
             max_wavelength=5000000.0,
@@ -195,11 +197,7 @@ class SmolLM3Attention(layers.Layer):
             cache_update_index=self_attention_cache_update_index,
         )
 
-        #attn_output = ops.reshape(attn_output, (*input_shape, -1))
-
         attn_output = self.o_proj(attn_output)
-
-
 
         if self_attention_cache is not None:
             return attn_output, self_attention_cache
