@@ -197,7 +197,7 @@ class SmolLM3Attention(layers.Layer):
             attention_mask=attention_mask,
         )
 
-        attn_output = ops.reshape(attn_output, (*input_shape, self.hidden_size))
+        #attn_output = ops.reshape(attn_output, (*input_shape, self.hidden_size))
 
         attn_output = self.o_proj(attn_output)
 
