@@ -12,6 +12,7 @@ from keras_hub.src.layers.modeling.transformer_layer_utils import (
 from keras_hub.src.models.smollm3.smollm3_utils import apply_rotary_pos_emb, apply_rotary_pos_single
 from keras_hub.src.models.smollm3.smollm3_utils import eager_attention_forward
 from keras_hub.src.models.smollm3.smollm3_utils import rope_init
+from keras_hub.src.layers.modeling.rotary_embedding import RotaryEmbedding
 
 
 class SmolLM3Attention(layers.Layer):
@@ -51,12 +52,13 @@ class SmolLM3Attention(layers.Layer):
         self.rope_layer_enabled_list = rope_layer_enabled_list
         self.layer_types = layer_types
 
-        self.rotary_embedding = SmolLM3RotaryEmbedding(
+        self.rotary_embedding = RotaryEmbedding(
             hidden_size=hidden_size,
             num_attention_heads=num_attention_heads,
             max_position_embeddings=65536,
-            rope_theta=5000000.0,
+            max_wavelength=5000000.0,
             partial_rotary_factor=0.5,
+            scaling_factor=1.0
         )
 
         self.layer_idx = layer_idx
@@ -182,11 +184,8 @@ class SmolLM3Attention(layers.Layer):
             key, value = _compute_kv_values(hidden_states)
 
         if self.use_rope:
-            query_cos, query_sin = self.rotary_embedding(query, start_index=start_index)
-            query = apply_rotary_pos_single(query, query_cos, query_sin)
-
-            key_cos, key_sin = self.rotary_embedding(key, start_index=start_index)
-            key = apply_rotary_pos_single(key, key_cos, key_sin)
+            query = self.rotary_embedding(query, start_index=start_index)
+            key = self.rotary_embedding(key, start_index=start_index)
 
         print('pre', key.shape, value.shape)
         key = ops.repeat(key, repeats=self.num_key_value_groups, axis=2)
