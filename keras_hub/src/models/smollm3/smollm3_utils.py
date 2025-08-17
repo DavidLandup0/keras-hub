@@ -18,6 +18,8 @@ def apply_rotary_pos_emb(q, k, cos, sin, expansion_axis=1):
 
 
 def apply_rotary_pos_single(tensor, cos, sin, expansion_axis=1):
+    print('tensor', tensor.shape)
+    print('cos', cos.shape)
     cos = ops.expand_dims(cos, expansion_axis)
     sin = ops.expand_dims(sin, expansion_axis)
     tensor_embed = (tensor * cos) + (rotate_half(tensor) * sin)
