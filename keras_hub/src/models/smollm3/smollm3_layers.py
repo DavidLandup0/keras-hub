@@ -187,17 +187,15 @@ class SmolLM3Attention(layers.Layer):
         value = ops.repeat(value, repeats=self.num_key_value_groups, axis=2)
         print('post', key.shape, value.shape)
         
-        attn_output = eager_attention_forward(
-            query=query,
-            key=key,
-            value=value,
-            dropout=self.attention_dropout,
-            scaling=self.scaling,
-            training=self.training,
-            attention_mask=attention_mask,
+        attn_output = self._compute_attention(
+            query,
+            key,
+            value,
+            attention_mask,
+            cache_update_index=self_attention_cache_update_index,
         )
 
-        attn_output = ops.reshape(attn_output, (*input_shape, -1))
+        #attn_output = ops.reshape(attn_output, (*input_shape, -1))
 
         attn_output = self.o_proj(attn_output)
 
@@ -237,6 +235,57 @@ class SmolLM3Attention(layers.Layer):
         )
 
         return [output_attn_output_shape, output_attn_weights_shape]
+    
+
+
+    def _masked_softmax(self, attention_scores, attention_mask=None):
+        """Applies softmax with optional masking.
+
+        Args:
+            attention_scores: Attention score tensor.
+            attention_mask: Optional mask tensor.
+
+        Returns:
+            Masked softmax attention weights.
+        """
+        if attention_mask is not None:
+            return self._softmax(
+                attention_scores, attention_mask[:, None, :, :]
+            )
+        return self._softmax(attention_scores)
+    
+    def _compute_attention(
+        self, query, key, value, attention_mask=None, cache_update_index=None
+    ):
+        """Computes attention using query, key, and value tensors.
+
+        Uses Flash Attention when available for better performance.
+
+        Args:
+            query: Query tensor.
+            key: Key tensor.
+            value: Value tensor.
+            attention_mask: Optional mask tensor.
+            cache_update_index: Index for sliding window computation.
+
+        Returns:
+            attention_output: Output tensor after applying attention.
+        """
+        attention_scores = ops.einsum(self._dot_product_equation, query, key)
+
+        attention_scores = ops.multiply(
+            attention_scores,
+            ops.cast(self._inv_norm_factor, self.compute_dtype),
+        )
+        attention_scores = self._masked_softmax(
+            attention_scores, attention_mask
+        )
+        attention_scores = ops.cast(attention_scores, self.compute_dtype)
+        attention_output = ops.einsum(
+            self._combine_equation, attention_scores, value
+        )
+
+        return attention_output
 
 
 class SmolLM3MLP(layers.Layer):
