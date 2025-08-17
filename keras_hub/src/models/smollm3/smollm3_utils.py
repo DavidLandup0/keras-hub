@@ -17,6 +17,13 @@ def apply_rotary_pos_emb(q, k, cos, sin, expansion_axis=1):
     return q_embed, k_embed
 
 
+def apply_rotary_pos_single(tensor, cos, sin, expansion_axis=1):
+    cos = ops.expand_dims(cos, expansion_axis)
+    sin = ops.expand_dims(sin, expansion_axis)
+    tensor_embed = (tensor * cos) + (rotate_half(tensor) * sin)
+    return tensor_embed
+
+
 def repeat_kv(hidden_states, n_rep):
     batch, num_key_value_heads, slen, head_dim = ops.shape(hidden_states)
     if n_rep == 1:

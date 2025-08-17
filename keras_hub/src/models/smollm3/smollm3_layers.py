@@ -9,7 +9,7 @@ from keras_hub.src.layers.modeling.transformer_layer_utils import (
 from keras_hub.src.layers.modeling.transformer_layer_utils import (
     merge_padding_and_attention_mask,
 )
-from keras_hub.src.models.smollm3.smollm3_utils import apply_rotary_pos_emb
+from keras_hub.src.models.smollm3.smollm3_utils import apply_rotary_pos_emb, apply_rotary_pos_single
 from keras_hub.src.models.smollm3.smollm3_utils import eager_attention_forward
 from keras_hub.src.models.smollm3.smollm3_utils import rope_init
 
@@ -182,8 +182,11 @@ class SmolLM3Attention(layers.Layer):
             key, value = _compute_kv_values(hidden_states)
 
         if self.use_rope:
-            query = self.rotary_embedding(query, start_index=start_index)
-            key = self.rotary_embedding(key, start_index=start_index)
+            query_cos, query_sin = self.rotary_embedding(query, start_index=start_index)
+            query = apply_rotary_pos_single(query, query_cos, query_sin)
+
+            key_cos, key_sin = self.rotary_embedding(key, start_index=start_index)
+            key = apply_rotary_pos_single(key, key_cos, key_sin)
 
         print('pre', key.shape, value.shape)
         key = ops.repeat(key, repeats=self.num_key_value_groups, axis=2)
