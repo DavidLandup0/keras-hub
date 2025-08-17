@@ -96,6 +96,12 @@ class SmolLM3Attention(layers.Layer):
             else True
         )  # Default to True if index out of bounds
 
+        self._softmax = layers.Softmax(
+            axis=-1,
+            dtype="float32",
+            name="attention_softmax",
+        )
+
     def build(self, input_shape):
         """
         Builds the internal Dense layers.
