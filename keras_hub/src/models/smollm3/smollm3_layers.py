@@ -185,8 +185,10 @@ class SmolLM3Attention(layers.Layer):
             query = self.rotary_embedding(query, start_index=start_index)
             key = self.rotary_embedding(key, start_index=start_index)
 
+        print('pre', key.shape, value.shape)
         key = ops.repeat(key, repeats=self.num_key_value_groups, axis=2)
         value = ops.repeat(value, repeats=self.num_key_value_groups, axis=2)
+        print('post', key.shape, value.shape)
         
         attn_output = eager_attention_forward(
             query=query,
