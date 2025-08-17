@@ -86,9 +86,17 @@ class SmolLM3Attention(layers.Layer):
             use_bias=self.attention_bias,
             name="v_proj",
         )
-        self.o_proj = layers.Dense(
-            self.hidden_size, use_bias=self.attention_bias, name="o_proj"
+        #self.o_proj = layers.Dense(
+        #    self.hidden_size, use_bias=self.attention_bias, name="o_proj"
+        #)
+        self.o_proj = layers.EinsumDense(
+            equation="bquh,uhm->bqm",
+            output_shape=(None, self.hidden_size),
+            kernel_initializer=self.kernel_initializer,
+            dtype=self.dtype_policy,
+            name="attention_output",
         )
+        self.o_proj.build((None, None, self.num_attention_heads, self.head_dim))
 
         self.use_rope = (
             self.rope_layer_enabled_list[self.layer_idx]
