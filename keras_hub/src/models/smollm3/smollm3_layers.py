@@ -197,9 +197,11 @@ class SmolLM3Attention(layers.Layer):
             attention_mask=attention_mask,
         )
 
-        #attn_output = ops.reshape(attn_output, (*input_shape, self.hidden_size))
+        attn_output = ops.reshape(attn_output, (*input_shape, -1))
 
         attn_output = self.o_proj(attn_output)
+
+
 
         if self_attention_cache is not None:
             return attn_output, self_attention_cache
