@@ -9,8 +9,6 @@ from keras_hub.src.layers.modeling.transformer_layer_utils import (
 from keras_hub.src.layers.modeling.transformer_layer_utils import (
     merge_padding_and_attention_mask,
 )
-from keras_hub.src.models.smollm3.smollm3_utils import apply_rotary_pos_emb, apply_rotary_pos_single
-from keras_hub.src.models.smollm3.smollm3_utils import eager_attention_forward
 from keras_hub.src.models.smollm3.smollm3_utils import rope_init
 from keras_hub.src.layers.modeling.rotary_embedding import RotaryEmbedding
 import math
