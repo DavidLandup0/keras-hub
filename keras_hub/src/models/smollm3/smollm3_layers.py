@@ -13,6 +13,7 @@ from keras_hub.src.models.smollm3.smollm3_utils import apply_rotary_pos_emb, app
 from keras_hub.src.models.smollm3.smollm3_utils import eager_attention_forward
 from keras_hub.src.models.smollm3.smollm3_utils import rope_init
 from keras_hub.src.layers.modeling.rotary_embedding import RotaryEmbedding
+import math
 
 
 class SmolLM3Attention(layers.Layer):
@@ -53,6 +54,9 @@ class SmolLM3Attention(layers.Layer):
         self.layer_types = layer_types
         self._dot_product_equation = "bquh,bkuh->buqk"
         self._combine_equation = "buqk,bkuh->bquh"
+
+        self.head_dim = hidden_size // self.num_attention_heads
+        self._inv_norm_factor = 1.0 / math.sqrt(self.head_dim)
 
         self.rotary_embedding = RotaryEmbedding(
             max_wavelength=5000000.0,
