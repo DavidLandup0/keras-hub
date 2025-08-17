@@ -36,39 +36,6 @@ def repeat_kv(hidden_states, n_rep):
     )
 
 
-def eager_attention_forward(
-    query,
-    key,
-    value,
-    scaling,
-    attention_mask=None,
-    dropout=0.0,
-    training=False,
-):
-    softmax_op = layers.Softmax(
-        axis=-1,
-        dtype="float32",
-        name="attention_softmax",
-    )
-
-    attn_weights = (
-        ops.matmul(query, ops.transpose(key, axes=(0, 1, 3, 2)))
-        * scaling
-    )
-
-    if attention_mask is not None:
-        attn_weights = softmax_op(attn_weights, attention_mask[:, None, :, :])
-    else:
-        attn_weights = softmax_op(attn_weights)
-
-    if training:
-        attn_weights = random.dropout(attn_weights, rate=dropout)
-    attn_output = ops.matmul(attn_weights, value)
-    attn_output = ops.transpose(attn_output, axes=(0, 2, 1, 3))
-
-    return attn_output
-
-
 def rope_init(rope_theta: float, partial_rotary_factor: float, head_dim: int):
     base = rope_theta
     dim = int(head_dim * partial_rotary_factor)

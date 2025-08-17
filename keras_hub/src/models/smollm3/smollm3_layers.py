@@ -86,9 +86,6 @@ class SmolLM3Attention(layers.Layer):
             use_bias=self.attention_bias,
             name="v_proj",
         )
-        #self.o_proj = layers.Dense(
-        #    self.hidden_size, use_bias=self.attention_bias, name="o_proj"
-        #)
         self.o_proj = layers.EinsumDense(
             equation="bquh,uhm->bqm",
             output_shape=(None, self.hidden_size),
@@ -127,7 +124,6 @@ class SmolLM3Attention(layers.Layer):
     def call(
         self,
         hidden_states,
-        position_embeddings,
         training=False,
         attention_mask=None,
         **kwargs,
@@ -508,7 +504,6 @@ class SmolLM3DecoderLayer(layers.Layer):
     def call(
         self,
         hidden_states,
-        position_embeddings=None,
         training=False,
         decoder_padding_mask=None,
         decoder_attention_mask=None,
@@ -541,7 +536,6 @@ class SmolLM3DecoderLayer(layers.Layer):
         # Self Attention
         x = self.self_attn(
             hidden_states=hidden_states,
-            position_embeddings=position_embeddings,
             training=training,
             attention_mask=self_attention_mask,
             **kwargs,

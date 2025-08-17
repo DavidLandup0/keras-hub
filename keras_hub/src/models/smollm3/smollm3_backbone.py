@@ -99,15 +99,7 @@ class SmolLM3Backbone(Backbone):
             epsilon=layer_norm_epsilon,
             name="sequence_output_layernorm",
         )
-
-        self.rotary_embedding = SmolLM3RotaryEmbedding(
-            hidden_size=hidden_dim,
-            num_attention_heads=num_attention_heads,
-            max_position_embeddings=max_position_embeddings,
-            rope_theta=rope_theta,
-            partial_rotary_factor=partial_rotary_factor,
-        )
-
+        
         # === Functional Model ===
         token_id_input = keras.Input(
             shape=(None,), dtype="int32", name="token_ids"
@@ -117,19 +109,11 @@ class SmolLM3Backbone(Backbone):
             shape=(None,), dtype="int32", name="padding_mask"
         )
 
-        cache_update_index = kwargs.get('self_attention_cache_index')
-
-        start_index = (
-            cache_update_index if cache_update_index is not None else 0
-        )
-
         x = self.token_embedding(token_id_input)
-        position_embeddings = self.rotary_embedding(x, start_index=start_index)
 
         for decoder_layer in self.transformer_layers:
             x = decoder_layer(
                 x,
-                position_embeddings=position_embeddings,
                 decoder_padding_mask=padding_mask_input,
                 **kwargs,
             )

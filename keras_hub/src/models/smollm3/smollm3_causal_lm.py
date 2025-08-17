@@ -71,18 +71,14 @@ class SmolLM3CausalLM(CausalLM):
 
         # Each decoder layer has a cache; we update them separately.
         updated_cache = []
-        position_embeddings = self.backbone.rotary_embedding(x, start_index=cache_update_index)
         
         for i in range(self.backbone.num_layers):
-            print(f"Decoder layer {i}")
             current_cache = cache[:, i, ...]
             x, next_cache = self.backbone.transformer_layers[i](
                 x,
-                position_embeddings=position_embeddings,
                 self_attention_cache=current_cache,
                 self_attention_cache_update_index=cache_update_index,
             )
-            print(next_cache.shape)
             updated_cache.append(next_cache)
         cache = ops.stack(updated_cache, axis=1)
         hidden_states = x = self.backbone.norm(x)
