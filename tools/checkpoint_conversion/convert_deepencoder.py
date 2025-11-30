@@ -22,22 +22,53 @@ from keras_hub.src.models.deep_encoder.deep_encoder_backbone import (
 
 def load_hf_models():
     """Load PyTorch models from DeepSeek-OCR."""
-    from pathlib import Path
+    print("Loading HuggingFace DeepSeek-OCR model...")
+    print("  (This will download the model if not cached)")
 
-    # Add DeepSeek-OCR repo to path
-    deepseek_path = (
-        Path.home()
-        / ".cache/huggingface/hub/models--deepseek-ai--DeepSeek-OCR/snapshots/ee668a444ce026b7a23944f36692df1cdba54de9"
+    from transformers import AutoModel
+
+    # Load full model
+    hf_model = AutoModel.from_pretrained(
+        "deepseek-ai/DeepSeek-OCR",
+        trust_remote_code=True,
+        torch_dtype=torch.float32,
     )
-    sys.path.insert(0, str(deepseek_path))
+    hf_model.eval()
 
-    from deepencoder import build_clip_l, build_sam_vit_b
+    print("  Model loaded successfully!")
+    print(f"  Model type: {type(hf_model).__name__}")
 
-    print("Loading PyTorch models from DeepSeek-OCR...")
-    torch_sam = build_sam_vit_b().eval()
-    torch_clip = build_clip_l().eval()
+    # The model is wrapped in DeepseekOCRForCausalLM
+    # Vision components are under model.sam_model, model.vision_model, model.projector
+    if hasattr(hf_model, 'model'):
+        base_model = hf_model.model
+    else:
+        base_model = hf_model
 
-    return torch_sam, torch_clip
+    print(f"  Base model type: {type(base_model).__name__}")
+    print(f"  Base model attributes: {[a for a in dir(base_model) if not a.startswith('_')][:10]}")
+
+    # Extract components
+    if hasattr(base_model, 'sam_model'):
+        torch_sam = base_model.sam_model
+    else:
+        raise AttributeError(f"Cannot find sam_model in {type(base_model).__name__}")
+
+    if hasattr(base_model, 'vision_model'):
+        torch_clip = base_model.vision_model
+    else:
+        raise AttributeError(f"Cannot find vision_model in {type(base_model).__name__}")
+
+    if hasattr(base_model, 'projector'):
+        torch_projector = base_model.projector
+    else:
+        raise AttributeError(f"Cannot find projector in {type(base_model).__name__}")
+
+    print(f"  SAM model: {type(torch_sam).__name__}")
+    print(f"  CLIP model: {type(torch_clip).__name__}")
+    print(f"  Projector: {type(torch_projector).__name__}")
+
+    return torch_sam, torch_clip, torch_projector
 
 
 def create_keras_model():
@@ -289,13 +320,48 @@ def convert_clip_weights(keras_clip, torch_clip):
     print("    CLIP weights converted!")
 
 
-def convert_weights(keras_model, torch_sam, torch_clip):
+def convert_projector_weights(keras_projector, torch_projector):
+    """Convert projector weights from PyTorch to Keras."""
+    print("  Converting projector weights...")
+
+    torch_dict = torch_projector.state_dict()
+    print(f"    PyTorch projector has {len(torch_dict)} weights")
+
+    # In DeepSeek-OCR, projector is: MlpProjector(projector_type="linear")
+    # Which creates: nn.Linear(2048, 1280)
+    # Weight key should be: "layers.weight" and "layers.bias"
+
+    weight_key = "layers.weight" if "layers.weight" in torch_dict else "weight"
+    bias_key = "layers.bias" if "layers.bias" in torch_dict else "bias"
+
+    if weight_key not in torch_dict:
+        print(f"    Available keys: {list(torch_dict.keys())}")
+        raise KeyError(f"Weight key '{weight_key}' not found in projector state dict")
+
+    # Get PyTorch weights
+    proj_weight = torch_dict[weight_key].cpu().numpy()  # [1280, 2048]
+    proj_bias = torch_dict[bias_key].cpu().numpy()  # [1280]
+
+    print(f"    PyTorch weight shape: {proj_weight.shape}")
+    print(f"    PyTorch bias shape: {proj_bias.shape}")
+
+    # Keras Dense expects [in_features, out_features]
+    # PyTorch Linear has [out_features, in_features]
+    # Need to transpose
+    keras_projector.projection.kernel.assign(proj_weight.T)  # [2048, 1280]
+    keras_projector.projection.bias.assign(proj_bias)
+
+    print("    Projector weights converted!")
+
+
+def convert_weights(keras_model, torch_sam, torch_clip, torch_projector=None):
     """Convert weights from PyTorch to Keras."""
     print("\nConverting weights...")
 
-    # Find SAM and CLIP encoders in the model
+    # Find SAM, CLIP encoders, and projector in the model
     sam_encoder = None
     clip_encoder = None
+    projector = None
 
     for layer in keras_model.layers:
         if hasattr(layer, 'name'):
@@ -305,21 +371,31 @@ def convert_weights(keras_model, torch_sam, torch_clip):
             elif 'clip_encoder' in layer.name:
                 clip_encoder = layer
                 print(f"  Found CLIP encoder: {layer.name}, type: {type(layer).__name__}")
+            elif 'projector' in layer.name:
+                projector = layer
+                print(f"  Found projector: {layer.name}, type: {type(layer).__name__}")
 
     if sam_encoder is None:
         raise ValueError("SAM encoder not found in model!")
     if clip_encoder is None:
         raise ValueError("CLIP encoder not found in model!")
+    if projector is None:
+        raise ValueError("Projector not found in model!")
 
     # Convert weights
     convert_sam_weights(sam_encoder, torch_sam)
     convert_clip_weights(clip_encoder, torch_clip)
 
+    if torch_projector is not None:
+        convert_projector_weights(projector, torch_projector)
+    else:
+        print("  ⚠️  No PyTorch projector provided, skipping projector weight conversion")
+
     print("  Weight conversion complete!")
     return keras_model
 
 
-def test_numerical_equivalence(keras_model, torch_sam, torch_clip):
+def test_numerical_equivalence(keras_model, torch_sam, torch_clip, torch_projector=None):
     """Test that outputs match between Keras and PyTorch."""
     print("\nTesting numerical equivalence...")
 
@@ -360,8 +436,16 @@ def test_numerical_equivalence(keras_model, torch_sam, torch_clip):
         # Concatenate (matching DeepEncoder fusion)
         clip_no_cls = clip_features[:, 1:, :]  # Remove CLS token
         sam_flat = sam_features.flatten(2).permute(0, 2, 1)  # [B, 1024, 256] -> [B, 256, 1024]
-        torch_output = torch.cat([clip_no_cls, sam_flat], dim=-1)
-        print(f"    PyTorch combined output shape: {torch_output.shape}")
+        fused = torch.cat([clip_no_cls, sam_flat], dim=-1)
+        print(f"    PyTorch fused output shape: {fused.shape}")
+
+        # Project (if projector provided)
+        if torch_projector is not None:
+            torch_output = torch_projector(fused)
+            print(f"    PyTorch projected output shape: {torch_output.shape}")
+        else:
+            torch_output = fused
+            print(f"    PyTorch final output shape (no projector): {torch_output.shape}")
 
         torch_output_np = torch_output.cpu().numpy()
         torch_sam_np = sam_features.cpu().numpy()
@@ -409,7 +493,7 @@ def main():
     print("="*80)
 
     # Load PyTorch models
-    torch_sam, torch_clip = load_hf_models()
+    torch_sam, torch_clip, torch_projector = load_hf_models()
 
     # Create Keras model
     keras_model = create_keras_model()
@@ -423,7 +507,7 @@ def main():
     print("  Model built!")
 
     # Convert weights
-    keras_model = convert_weights(keras_model, torch_sam, torch_clip)
+    keras_model = convert_weights(keras_model, torch_sam, torch_clip, torch_projector)
 
     # IMPORTANT: Functional models in JAX cache the computation graph with initial weights
     # We need to save and reload to update the cached graph
@@ -440,14 +524,15 @@ def main():
     print("  Weights loaded!")
 
     # Test equivalence with the fresh model
-    test_numerical_equivalence(keras_model_fresh, torch_sam, torch_clip)
+    test_numerical_equivalence(keras_model_fresh, torch_sam, torch_clip, torch_projector)
 
     print("\n" + "="*80)
-    print("Next steps:")
-    print("  1. Implement weight mapping in convert_weights()")
-    print("  2. Port SAM ViTDet weights to keras SAMImageEncoder")
-    print("  3. Port CLIP transformer weights to keras DeepEncoderCLIPImageEncoder")
-    print("  4. Verify numerical equivalence")
+    print("✅ DeepEncoder weight conversion and verification complete!")
+    print("="*80)
+    print("\nConverted weights saved to: /tmp/deepencoder_converted.weights.h5")
+    print("\nTo use the converted model:")
+    print("  model = DeepEncoderBackbone(...)")
+    print("  model.load_weights('/tmp/deepencoder_converted.weights.h5')")
     print("="*80)
 
 
