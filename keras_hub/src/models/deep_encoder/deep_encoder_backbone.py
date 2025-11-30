@@ -6,6 +6,7 @@ from keras_hub.src.models.backbone import Backbone
 from keras_hub.src.models.deep_encoder.deep_encoder_layers import (
     DeepEncoderCLIPImageEncoder,
     DeepEncoderFeatureFusion,
+    DeepEncoderMlpProjector,
     SAMImageEncoder,
 )
 
@@ -17,9 +18,8 @@ class DeepEncoderBackbone(Backbone):
     DeepEncoder is a vision encoder that combines two vision transformers:
     1. SAM ViT-B: Processes images and outputs spatial features [B, 1024, 16, 16]
     2. Modified CLIP ViT-L: Takes image and SAM features, outputs [B, 257, 1024]
-
-    The final output concatenates CLIP tokens (without CLS) and SAM features,
-    resulting in [B, 256, 2048] features.
+    3. Feature Fusion: Concatenates CLIP (no CLS) + SAM → [B, 256, 2048]
+    4. MLP Projector: Projects to language model dimension → [B, 256, 1280]
 
     This architecture is used in DeepSeek-OCR for document understanding.
 
@@ -37,6 +37,8 @@ class DeepEncoderBackbone(Backbone):
         clip_intermediate_dim: int. CLIP FFN dimension (default: 4096).
         clip_image_size: int. CLIP processes image at this size (default: 224).
         clip_patch_size: int. CLIP patch size (default: 14).
+        projector_input_dim: int. Projector input dimension (default: 2048).
+        projector_output_dim: int. Projector output dimension (default: 1280).
         dtype: string or keras.mixed_precision.DTypePolicy. The dtype to use
             for model computations and weights.
 
@@ -54,7 +56,7 @@ class DeepEncoderBackbone(Backbone):
     # Forward pass
     images = np.random.rand(1, 1024, 1024, 3).astype("float32")
     features = deep_encoder(images)
-    print(features.shape)  # (1, 256, 2048)
+    print(features.shape)  # (1, 256, 1280)
     ```
     """
 
@@ -72,6 +74,8 @@ class DeepEncoderBackbone(Backbone):
         clip_intermediate_dim=4096,
         clip_image_size=224,
         clip_patch_size=14,
+        projector_input_dim=2048,
+        projector_output_dim=1280,
         dtype=None,
         **kwargs,
     ):
@@ -106,7 +110,14 @@ class DeepEncoderBackbone(Backbone):
             name="feature_fusion"
         )([clip_features, sam_features])  # Output: [B, 256, 2048]
 
-        super().__init__(inputs=image_input, outputs=combined, dtype=dtype, **kwargs)
+        # Project to language model dimension
+        projected = DeepEncoderMlpProjector(
+            input_dim=projector_input_dim,
+            output_dim=projector_output_dim,
+            name="projector",
+        )(combined)  # Output: [B, 256, 1280]
+
+        super().__init__(inputs=image_input, outputs=projected, dtype=dtype, **kwargs)
 
         # === Config ===
         self.image_size = image_size
@@ -121,6 +132,8 @@ class DeepEncoderBackbone(Backbone):
         self.clip_intermediate_dim = clip_intermediate_dim
         self.clip_image_size = clip_image_size
         self.clip_patch_size = clip_patch_size
+        self.projector_input_dim = projector_input_dim
+        self.projector_output_dim = projector_output_dim
 
     def get_config(self):
         config = super().get_config()
@@ -137,5 +150,7 @@ class DeepEncoderBackbone(Backbone):
             "clip_intermediate_dim": self.clip_intermediate_dim,
             "clip_image_size": self.clip_image_size,
             "clip_patch_size": self.clip_patch_size,
+            "projector_input_dim": self.projector_input_dim,
+            "projector_output_dim": self.projector_output_dim,
         })
         return config

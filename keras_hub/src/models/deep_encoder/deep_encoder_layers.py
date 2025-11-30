@@ -7,6 +7,50 @@ from keras_hub.src.models.vit_det.vit_det_backbone import ViTDetBackbone
 
 
 @keras.saving.register_keras_serializable(package="keras_hub")
+class DeepEncoderMlpProjector(keras.layers.Layer):
+    """MLP projector for DeepEncoder vision features.
+
+    Projects concatenated vision features (2048-dim) to language model
+    embedding dimension (1280-dim). In the original DeepSeek-OCR, this
+    is a simple linear projection.
+
+    Args:
+        input_dim: int. Input feature dimension (default 2048).
+        output_dim: int. Output embedding dimension (default 1280).
+    """
+
+    def __init__(
+        self,
+        input_dim=2048,
+        output_dim=1280,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+    def build(self, input_shape):
+        # Simple linear projection as in original implementation
+        self.projection = keras.layers.Dense(
+            self.output_dim,
+            use_bias=True,
+            name="linear_proj",
+        )
+        self.built = True
+
+    def call(self, x):
+        return self.projection(x)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "input_dim": self.input_dim,
+            "output_dim": self.output_dim,
+        })
+        return config
+
+
+@keras.saving.register_keras_serializable(package="keras_hub")
 class DeepEncoderFeatureFusion(keras.layers.Layer):
     """Fuses CLIP and SAM features for DeepEncoder.
 
